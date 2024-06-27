@@ -552,6 +552,13 @@ const quickTemplate = [
         }
       },
       {
+        name: "查支付购买",
+        callback: function () {
+          filterParam.value.wantShowColNamesText = fixedColNames.value.concat(["pid", "productid", "pid", "orderid", "add_source", "sub_add_source"]).join(",");
+          filterParam.value.conditionText = `["add_items","purchased","payment","ipa_begin","iap_end","iap_restore_begin","iap_verify_begin","subscrib","iap_consume","restore","restore_finish"].indexOf(x.event_name)>=0`;
+        }
+      },
+      {
         name: "调试用的按钮",
         callback: function () {
           window.p = allDatas.value[0].params;
@@ -666,7 +673,7 @@ const tableDescs1 = computed(() => {
   infos.push(`country=${userStData.value.allCountrys.join(',')}`);
   infos.push(`city=${userStData.value.allCitys.join(',')}`);
   if (userStData.value.jserror_news.length > 0) {
-    infos.push(`有jserror_new!}`);
+    infos.push(`有jserror_new!`);
   }
   if (userStData.value.errlogs.length > 0) {
     infos.push(`有errlog!`);

@@ -6,12 +6,14 @@ import BingoTest from "./components/BingoTest.vue";
 import ScavengeMap from "./components/ScavengeMap.vue";
 import MonsterMazeMap from "./components/MonsterMazeMap.vue";
 import EasyShushu from "./components/EasyShushu.vue";
+import DogRun from "./components/DogRun.vue";
 
 const PageConfigs = [
   // { name: "BingoTest", comp: BingoTest },
   // { name: "ScavengeMap", comp: ScavengeMap },
   // { name: "MonsterMazeMap", comp: MonsterMazeMap },
   { name: "EasyShushu", comp: EasyShushu },
+  { name: "DogRun", comp: DogRun },
 ];
 
 const PageNames = computed(() => PageConfigs.map((x) => x.name));

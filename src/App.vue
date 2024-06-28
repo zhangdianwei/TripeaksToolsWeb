@@ -12,8 +12,8 @@ const PageConfigs = [
   // { name: "BingoTest", comp: BingoTest },
   // { name: "ScavengeMap", comp: ScavengeMap },
   // { name: "MonsterMazeMap", comp: MonsterMazeMap },
-  { name: "EasyShushu", comp: EasyShushu },
-  { name: "DogRun", comp: DogRun },
+  { name: "数数（程序版）", comp: EasyShushu },
+  { name: "小狗快跑地图编辑器", comp: DogRun },
 ];
 
 const PageNames = computed(() => PageConfigs.map((x) => x.name));

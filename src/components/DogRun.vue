@@ -1,14 +1,10 @@
 <script setup>
 import { forIn } from "lodash";
 import { ref, reactive, computed, onMounted, shallowRef, watch } from "vue";
-import { Image } from "konva"
-
-function onAnimationFrame(timestamp) {
-    // requestAnimationFrame(onAnimationFrame);
-    canvasRef.value.renderAll();
-}
+import { Image, Text, Group } from "konva"
 
 const TileType = {
+    Empty: 0,
     Road: 1,
     SlopeDown: 2,
     SlopeUp: 3,
@@ -16,7 +12,6 @@ const TileType = {
     CliffEnd: 5,
     Random: 10,
 }
-
 const OffsetConfigY = {
     "1_2": 0,
     "2_2": 99,
@@ -26,8 +21,13 @@ const OffsetConfigY = {
     "5_1": -12,
     "3_3": -100,
 }
-
 const TileConfig = {
+    "0": {
+        img: "dog_run/dog_run_lu_0.png",
+        width: 200,
+        height: 600,
+        name: "空",
+    },
     "1": {
         img: "dog_run/dog_run_lu_1.png",
         width: 605,
@@ -65,19 +65,43 @@ const TileConfig = {
         name: "高台",
     },
 }
-
-
+const BlockConfig = {
+    "1": {
+        img: "dog_run/block_stone.png",
+        width: 180,
+        height: 180,
+    },
+    "2": {
+        img: "dog_run/block_stone2.png",
+        width: 180,
+        height: 180,
+    }
+}
 const mapData = ref({
-    startPos: { x: 0, y: 500 },
+    blocks: [
+        {
+            type: 1,
+        }
+    ],
+    startPos: { x: 0, y: 0 },
     tiles: [
         {
             type: 1,
         },
         {
-            type: 1,
+            type: 0,
         },
         {
-            type: 2,
+            type: 0,
+        },
+        {
+            type: 0,
+        },
+        {
+            type: 0,
+        },
+        {
+            type: 0,
         },
         {
             type: 2,
@@ -137,24 +161,34 @@ function onClickSubMapTile(tileIndex) {
     mapData.value.tiles.splice(tileIndex, 1);
 }
 
+function onClickAddMapBlock(index) {
+    var pre = mapData.value.blocks[index] || { type: 1 };
+    var cur = JSON.parse(JSON.stringify(pre));
+    mapData.value.blocks.splice(index + 1, 0, cur);
+}
+
+function onClickSubMapBlock(index) {
+    var group = blockLayerRef.value.getNode().findOne(`#block${index}`);
+    group.remove();
+    mapData.value.blocks.splice(index, 1);
+}
+
+
 watch(mapData.value.tiles, () => {
-    console.log("mapData");
-    refreshMap();
+    refreshTileLayer();
+});
+watch(mapData.value.blocks, () => {
+    refreshBlockLayer();
 });
 
 
-function refreshMap() {
+function refreshTileLayer() {
     var mapObj = mapData.value;
-    var canvas = canvasRef.value.getNode();
+    var tileLayer = tileLayerRef.value.getNode();
+
+    tileLayer.removeChildren();
 
     var tiles = mapObj.tiles;
-
-    canvas.removeChildren();
-    // var objects = canvas.getObjects();
-    // for (let i = 0; i < objects.length; i++) {
-    //     const element = objects[i];
-    //     canvas.remove(element);
-    // }
 
     var x = 0;
     var y = mapObj.startPos.y;
@@ -184,34 +218,115 @@ function refreshMap() {
             y: objY,
             // draggable: true,
         })
-        canvasRef.value.getNode().add(image);
+        tileLayerRef.value.getNode().add(image);
+
+        var simpleText = new Text({
+            x: objX + tileConfig.width / 2,
+            y: objY + tileConfig.height / 2,
+            text: i + 1 + "",
+            fontSize: 100,
+        });
+        tileLayerRef.value.getNode().add(simpleText);
     }
 }
 
-const configCircle = ref({
-    x: 100,
-    y: 100,
-    radius: 70,
-    fill: 'red',
-    stroke: 'black',
-    strokeWidth: 4,
-    draggable: true,
-})
+function refreshBlockLayer() {
+    var mapObj = mapData.value;
+    var layer = blockLayerRef.value.getNode();
+    let blocks = mapObj.blocks;
+
+    while (layer.getChildren().length < blocks.length) {
+        var index = layer.getChildren().length;
+        var preGroup = null;
+        if (index > 0) {
+            preGroup = layer.getChildren()[index - 1];
+        }
+
+        var x = preGroup ? preGroup.x() + 100 : 100;
+        var y = preGroup ? preGroup.y() + 50 : 100;
+        var group = new Group({
+            draggable: true,
+            myIndex: index,
+            id: `block${index}`,
+            x, y,
+        });
+        layer.add(group);
+    }
+
+    for (let i = 0; i < blocks.length; i++) {
+        const blockData = blocks[i];
+        const blockConfig = BlockConfig[blockData.type];
+        var group = layer.getChildren()[i];
+        group.setAttrs({
+            id: `block${i}`,
+        })
+
+        var image = group.findOne("#myimage");
+        var text = group.findOne("#mytext");
+
+        if (!image) {
+            image = new Image({
+                id: "myimage",
+            });
+            group.add(image);
+        }
+        image.setAttrs({
+            image: blockConfig.image,
+        })
+
+        if (!text) {
+            text = new Text({
+                fontSize: 100,
+                id: "mytext",
+            });
+            group.add(text);
+        }
+        text.setAttrs({
+            text: i + 1 + "",
+            x: 0 + blockConfig.width / 2,
+            y: 0 + blockConfig.height / 2,
+        })
+
+        // var image = new Image({
+        //     image: blockConfig.image,
+        //     x: 0,
+        //     y: 0,
+        // })
+        // group.add(image);
+
+        // var simpleText = new Text({
+        //     x: 0 + blockConfig.width / 2,
+        //     y: 0 + blockConfig.height / 2,
+        //     text: i + 1 + "",
+        //     fontSize: 100,
+        // });
+        // group.add(simpleText);
+    }
+}
+
 
 const stageRef = shallowRef(null);
-const canvasRef = shallowRef(null);
+const tileLayerRef = shallowRef(null);
+const blockLayerRef = shallowRef(null);
 onMounted(() => {
     for (const key in TileConfig) {
         const element = TileConfig[key];
         element.image = new window.Image();
         element.image.src = element.img;
     }
+    for (const key in BlockConfig) {
+        const element = BlockConfig[key];
+        element.image = new window.Image();
+        element.image.src = element.img;
+    }
 
 
 
-    window.canvasRef = canvasRef;
+    window.tileLayerRef = tileLayerRef;
     window.stageRef = stageRef;
-    refreshMap();
+    window.mapData = mapData;
+    refreshTileLayer();
+    refreshBlockLayer();
 
     var stage = stageRef.value.getNode();
 
@@ -254,19 +369,25 @@ onMounted(() => {
     <Row>
         <Col :span="16">
         <v-stage ref="stageRef" :config="{ width: 1136, height: 640, draggable: true }">
-            <v-layer ref="canvasRef">
+            <v-layer ref="tileLayerRef">
+            </v-layer>
+            <v-layer ref="blockLayerRef">
             </v-layer>
         </v-stage>
         </Col>
         <Col :span="8">
-        <Collapse model-value="1">
+        <Collapse model-value="2">
             <Panel>
-                地图配置
+                图块配置
                 <template #content>
                     <template v-for="mapTile, i in mapData.tiles">
                         <Row>
+                            <Col :span="1">
+                            <p>{{ i + 1 }}</p>
+                            </Col>
                             <Col :span="6">
                             <Select v-model="mapTile.type">
+                                <Option :value="0">空</Option>
                                 <Option :value="1">平地</Option>
                                 <Option :value="2">下坡</Option>
                                 <Option :value="3">上坡</Option>
@@ -280,6 +401,36 @@ onMounted(() => {
                             <Button v-if="i > 0" @click="onClickSubMapTile(i)">-</Button>
                             </Col>
                         </Row>
+                    </template>
+                </template>
+            </Panel>
+            <Panel>
+                障碍物配置
+                <template #content>
+                    <template v-if="mapData.blocks.length > 0">
+                        <template v-for="blockData, i in mapData.blocks">
+                            <Row>
+                                <Col :span="1">
+                                <p>{{ i + 1 }}</p>
+                                </Col>
+                                <Col :span="6">
+                                <span>
+                                    <Select v-model="blockData.type">
+                                        <Option :value="1">障碍1</Option>
+                                        <Option :value="2">障碍2</Option>
+                                    </Select>
+                                </span>
+                                </Col>
+                                <Col :span="4">
+                                <Button @click="onClickAddMapBlock(i)">+</Button>
+                                <Button @click="onClickSubMapBlock(i)">-</Button>
+                                </Col>
+                            </Row>
+                        </template>
+
+                    </template>
+                    <template v-if="mapData.blocks.length == 0">
+                        <Button @click="onClickAddMapBlock(null)">+</Button>
                     </template>
                 </template>
             </Panel>

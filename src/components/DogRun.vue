@@ -10,6 +10,7 @@ const TileType = {
     SlopeUp: 3,
     CliffStart: 4,
     CliffEnd: 5,
+    Platform: 6,
     Random: 10,
 }
 const OffsetConfigY = {
@@ -87,6 +88,10 @@ const mapData = ref({
     tiles: [
         {
             type: 1,
+        },
+        {
+            type: 6,
+            grade: 100,
         },
         {
             type: 0,
@@ -209,8 +214,13 @@ function refreshTileLayer() {
             offsetY = OffsetConfigY[offsetYName] || 0;
         }
         y += offsetY;
+
+        if (mapTile.type == TileType.Platform || mapTile.type == TileType.CliffEnd) {
+            mapTile.grade |= 0;
+            y -= mapTile.grade;
+        }
+
         const objY = y;
-        const index = i;
 
         var image = new Image({
             image: tileConfig.image,
@@ -399,6 +409,11 @@ onMounted(() => {
                             <Col :span="4">
                             <Button @click="onClickAddMapTile(i)">+</Button>
                             <Button v-if="i > 0" @click="onClickSubMapTile(i)">-</Button>
+                            </Col>
+                            <Col :span="10" v-if="mapTile.grade != null">
+                            <Tooltip content="高台高度">
+                                <InputNumber v-model="mapTile.grade" :number="true" :step="100"></InputNumber>
+                            </Tooltip>
                             </Col>
                         </Row>
                     </template>

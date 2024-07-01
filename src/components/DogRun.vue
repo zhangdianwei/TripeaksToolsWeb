@@ -68,6 +68,12 @@ const TileConfig = {
         height: 251,
         name: "高台",
     },
+    "10": {
+        img: "dog_run/dog_run_lu_10.png",
+        width: 605,
+        height: 620,
+        name: "随机地块",
+    },
 }
 const BlockConfig = {
     "1": {
@@ -93,8 +99,7 @@ const mapData = ref({
             type: 1,
         },
         {
-            type: 6,
-            platOffsetY: 100,
+            type: 10,
         },
         {
             type: 0,
@@ -168,7 +173,7 @@ function onClickAddMapTile() {
     var cur = JSON.parse(JSON.stringify(pre));
     cur.platOffsetY = 0;
     mapData.value.tiles.splice(tileIndex + 1, 0, cur);
-    selectedData.value = null;
+    selected.value = [];
 }
 
 function onClickSubMapTile() {
@@ -177,21 +182,36 @@ function onClickSubMapTile() {
     }
     var tileIndex = selectedData.value.index;
     mapData.value.tiles.splice(tileIndex, 1);
-    selectedData.value = null;
+    selected.value = [];
 }
 
 function onClickAddMapBlock() {
-    var index = selectedData.index;
+    if (selectedData.value) {
+        var index = selectedData.value.index;
+    }
+    else {
+        var index = 0;
+    }
     var pre = mapData.value.blocks[index] || { type: 1 };
     var cur = JSON.parse(JSON.stringify(pre));
     mapData.value.blocks.splice(index + 1, 0, cur);
+    selected.value = [];
+    refreshBlockLayer();
 }
 
 function onClickSubMapBlock() {
-    var index = selectedData.index;
+    if (!selectedData.value) {
+        return;
+    }
+    var index = selectedData.value.index;
     var group = blockLayerRef.value.getNode().findOne(`#block${index}`);
+    if (!group) {
+        return;
+    }
     group.remove();
     mapData.value.blocks.splice(index, 1);
+    selected.value = [];
+    refreshBlockLayer();
 }
 
 
@@ -210,6 +230,16 @@ function refreshTileLayer() {
     layer.removeChildren();
 
     var tiles = mapObj.tiles;
+
+    for (let i = 0; i < tiles.length; i++) {
+        const element = tiles[i];
+        if (!element.rands) {
+            element.rands = [];
+        }
+        if (!element.platOffsetY) {
+            element.platOffsetY = 0;
+        }
+    }
 
     var x = 0;
     var y = mapObj.startPos.y;
@@ -264,6 +294,8 @@ function refreshBlockLayer() {
     var layer = blockLayerRef.value.getNode();
     let blocks = mapObj.blocks;
 
+    // layer.removeChildren();
+
     while (layer.getChildren().length < blocks.length) {
         var index = layer.getChildren().length;
         var preGroup = null;
@@ -278,13 +310,20 @@ function refreshBlockLayer() {
             id: `block${index}`,
             x, y,
         });
+        group.myIndex = index;
         layer.add(group);
     }
+
+    var children = layer.getChildren().concat([]);
+    children = children.sort((a, b) => {
+        return a.x() - b.x();
+    });
 
     for (let i = 0; i < blocks.length; i++) {
         const blockData = blocks[i];
         const blockConfig = BlockConfig[blockData.type];
-        var group = layer.getChildren()[i];
+        var group = children[i];
+        group = children[i];
         group.setAttrs({
             id: `block${i}`,
         })
@@ -471,6 +510,7 @@ const tileMenuEnabled = computed(() => {
     return selectedData.value && selectedData.value.shape.hasName("tile");
 });
 const blockMenuEnabled = computed(() => {
+    return true;
     return selectedData.value && selectedData.value.shape.hasName("block");
 });
 
@@ -481,7 +521,7 @@ const selectedMapTile = computed(() => {
     return null;
 });
 const selectedMapBlock = computed(() => {
-    if (blockMenuEnabled.value) {
+    if (selectedData.value && selectedData.value.shape.hasName("block")) {
         return mapData.value.blocks[selectedData.value.index];
     }
     return null;
@@ -501,6 +541,10 @@ const selectedMapBlock = computed(() => {
         </Col>
         <Col :span="8">
 
+        <Divider>统计</Divider>
+        <p>当前共有{{ mapData.tiles.length }}个地块</p>
+        <p>当前共有{{ mapData.blocks.length }}个障碍</p>
+
         <Divider>地块操作</Divider>
         <ButtonGroup>
             <Button @click="onClickAddMapTile" :disabled="!tileMenuEnabled">添加地块</Button>
@@ -516,11 +560,24 @@ const selectedMapBlock = computed(() => {
                 <Option :value="4">悬崖开始</Option>
                 <Option :value="5">悬崖结束</Option>
                 <Option :value="6">高台</Option>
+                <Option :value="10">随机</Option>
             </Select>
 
             <div>额外高度偏移</div>
             <InputNumber v-model="selectedMapTile.platOffsetY" :step="100"></InputNumber>
 
+            <template v-if="selectedMapTile.type == 10">
+                <div>随机地块类型</div>
+                <Select v-model="selectedMapTile.rands" :multiple="true">
+                    <Option :value="0">空</Option>
+                    <Option :value="1">平地</Option>
+                    <Option :value="2">下坡</Option>
+                    <Option :value="3">上坡</Option>
+                    <Option :value="4">悬崖开始</Option>
+                    <Option :value="5">悬崖结束</Option>
+                    <Option :value="6">高台</Option>
+                </Select>
+            </template>
 
         </template>
 

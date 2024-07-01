@@ -12,6 +12,10 @@ const TileType = {
     Platform: 6,
     Random: 10,
 }
+const BlockType = {
+    StyleA: 1,
+    StyleB: 2,
+}
 const OffsetConfigY = {
     "1_2": 0,
     "2_2": 99,
@@ -176,13 +180,15 @@ function onClickSubMapTile() {
     selectedData.value = null;
 }
 
-function onClickAddMapBlock(index) {
+function onClickAddMapBlock() {
+    var index = selectedData.index;
     var pre = mapData.value.blocks[index] || { type: 1 };
     var cur = JSON.parse(JSON.stringify(pre));
     mapData.value.blocks.splice(index + 1, 0, cur);
 }
 
-function onClickSubMapBlock(index) {
+function onClickSubMapBlock() {
+    var index = selectedData.index;
     var group = blockLayerRef.value.getNode().findOne(`#block${index}`);
     group.remove();
     mapData.value.blocks.splice(index, 1);
@@ -269,7 +275,6 @@ function refreshBlockLayer() {
         var y = preGroup ? preGroup.y() + 50 : 100;
         var group = new Group({
             draggable: true,
-            myIndex: index,
             id: `block${index}`,
             x, y,
         });
@@ -283,6 +288,8 @@ function refreshBlockLayer() {
         group.setAttrs({
             id: `block${i}`,
         })
+        group.name("block select");
+        group.myIndex = i;
 
         var image = group.findOne("#myimage");
         var text = group.findOne("#mytext");
@@ -386,9 +393,9 @@ onMounted(() => {
 
     stage.on('click', (e) => {
         var temp = [];
-        var parent = getParentCanSelect(e.target);
-        if (parent) {
-            temp.push(parent);
+        var canSelectShape = getParentCanSelect(e.target);
+        if (canSelectShape) {
+            temp.push(canSelectShape);
         }
         selected.value = temp;
     });
@@ -397,7 +404,7 @@ onMounted(() => {
 function getParentCanSelect(shape) {
     var parent = shape;
     while (parent && !parent.hasName("select")) {
-        parent = shape.getParent();
+        parent = parent.getParent();
     }
     return parent;
 }
@@ -463,10 +470,19 @@ const selectedData = ref(null);
 const tileMenuEnabled = computed(() => {
     return selectedData.value && selectedData.value.shape.hasName("tile");
 });
+const blockMenuEnabled = computed(() => {
+    return selectedData.value && selectedData.value.shape.hasName("block");
+});
 
 const selectedMapTile = computed(() => {
-    if (selectedData.value) {
+    if (tileMenuEnabled.value) {
         return mapData.value.tiles[selectedData.value.index];
+    }
+    return null;
+});
+const selectedMapBlock = computed(() => {
+    if (blockMenuEnabled.value) {
+        return mapData.value.blocks[selectedData.value.index];
     }
     return null;
 });
@@ -485,11 +501,11 @@ const selectedMapTile = computed(() => {
         </Col>
         <Col :span="8">
 
+        <Divider>地块操作</Divider>
         <ButtonGroup>
             <Button @click="onClickAddMapTile" :disabled="!tileMenuEnabled">添加地块</Button>
             <Button @click="onClickSubMapTile" :disabled="!tileMenuEnabled">删除地块</Button>
         </ButtonGroup>
-
         <template v-if="selectedMapTile">
             <div>地块类型</div>
             <Select v-model="selectedMapTile.type">
@@ -504,6 +520,21 @@ const selectedMapTile = computed(() => {
 
             <div>额外高度偏移</div>
             <InputNumber v-model="selectedMapTile.platOffsetY" :step="100"></InputNumber>
+
+
+        </template>
+
+        <Divider>障碍物操作</Divider>
+        <ButtonGroup>
+            <Button @click="onClickAddMapBlock" :disabled="!blockMenuEnabled">添加障碍</Button>
+            <Button @click="onClickSubMapBlock" :disabled="!blockMenuEnabled">删除障碍</Button>
+        </ButtonGroup>
+        <template v-if="selectedMapBlock">
+            <div>地块类型</div>
+            <Select v-model="selectedMapBlock.type">
+                <Option :value="1">障碍物A</Option>
+                <Option :value="2">障碍物B</Option>
+            </Select>
         </template>
 
         <!-- <Collapse model-value="2">

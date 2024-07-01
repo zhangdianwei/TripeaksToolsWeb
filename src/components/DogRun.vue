@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, shallowRef, watch } from "vue";
 import { Image, Text, Group } from "konva"
+import ViewUIPlus from 'view-ui-plus'
 
 const TileType = {
     Empty: 0,
@@ -164,6 +165,36 @@ const mapData = ref({
     ]
 });
 
+function onClickExport() {
+    var res = JSON.parse(JSON.stringify(mapData.value));
+    delete res.startPos;
+    for (let i = 0; i < res.tiles.length; i++) {
+        const element = res.tiles[i];
+        element.t = element.type;
+        delete element.type;
+        if (element.rands.length == 0) {
+            delete element.rands;
+        }
+        if (element.platOffsetY == 0) {
+            delete element.platOffsetY;
+        }
+    }
+
+    var children = blockLayerRef.value.getNode().getChildren().concat([]);
+    children = children.sort((a, b) => {
+        return a.x() - b.x();
+    });
+    for (let i = 0; i < res.blocks.length; i++) {
+        const element = res.blocks[i];
+        element.t = element.type;
+        delete element.type;
+        element.x = Math.floor(children[i].x());
+        element.y = Math.floor(children[i].y());
+    }
+    // console.log(res);
+    ViewUIPlus.Copy({ text: JSON.stringify(res) });
+}
+
 function onClickAddMapTile() {
     if (!selectedData.value) {
         return;
@@ -233,10 +264,10 @@ function refreshTileLayer() {
 
     for (let i = 0; i < tiles.length; i++) {
         const element = tiles[i];
-        if (!element.rands) {
+        if (!element.rands == null) {
             element.rands = [];
         }
-        if (!element.platOffsetY) {
+        if (element.platOffsetY == null) {
             element.platOffsetY = 0;
         }
     }
@@ -270,6 +301,7 @@ function refreshTileLayer() {
             x: objX,
             y: objY,
             name: `tile select index${i}`,
+            draggable: true,
         })
         group.myIndex = i;
         layer.add(group);
@@ -544,6 +576,7 @@ const selectedMapBlock = computed(() => {
         <Divider>统计</Divider>
         <p>当前共有{{ mapData.tiles.length }}个地块</p>
         <p>当前共有{{ mapData.blocks.length }}个障碍</p>
+        <Button @click="onClickExport">复制到剪贴板</Button>
 
         <Divider>地块操作</Divider>
         <ButtonGroup>

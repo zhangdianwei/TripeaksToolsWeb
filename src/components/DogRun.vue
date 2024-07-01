@@ -1,5 +1,4 @@
 <script setup>
-import { forIn } from "lodash";
 import { ref, reactive, computed, onMounted, shallowRef, watch } from "vue";
 import { Image, Text, Group } from "konva"
 
@@ -91,7 +90,7 @@ const mapData = ref({
         },
         {
             type: 6,
-            grade: 100,
+            platOffsetY: 100,
         },
         {
             type: 0,
@@ -156,14 +155,25 @@ const mapData = ref({
     ]
 });
 
-function onClickAddMapTile(tileIndex) {
+function onClickAddMapTile() {
+    if (!selectedData.value) {
+        return;
+    }
+    var tileIndex = selectedData.value.index;
     var pre = mapData.value.tiles[tileIndex];
     var cur = JSON.parse(JSON.stringify(pre));
+    cur.platOffsetY = 0;
     mapData.value.tiles.splice(tileIndex + 1, 0, cur);
+    selectedData.value = null;
 }
 
-function onClickSubMapTile(tileIndex) {
+function onClickSubMapTile() {
+    if (!selectedData.value) {
+        return;
+    }
+    var tileIndex = selectedData.value.index;
     mapData.value.tiles.splice(tileIndex, 1);
+    selectedData.value = null;
 }
 
 function onClickAddMapBlock(index) {
@@ -189,9 +199,9 @@ watch(mapData.value.blocks, () => {
 
 function refreshTileLayer() {
     var mapObj = mapData.value;
-    var tileLayer = tileLayerRef.value.getNode();
+    var layer = tileLayerRef.value.getNode();
 
-    tileLayer.removeChildren();
+    layer.removeChildren();
 
     var tiles = mapObj.tiles;
 
@@ -215,28 +225,31 @@ function refreshTileLayer() {
         }
         y += offsetY;
 
-        if (mapTile.type == TileType.Platform || mapTile.type == TileType.CliffEnd) {
-            mapTile.grade |= 0;
-            y -= mapTile.grade;
-        }
+        mapTile.platOffsetY |= 0;
+        y -= mapTile.platOffsetY;
 
         const objY = y;
 
-        var image = new Image({
-            image: tileConfig.image,
+        var group = new Group({
             x: objX,
             y: objY,
-            // draggable: true,
+            name: `tile select index${i}`,
         })
-        tileLayerRef.value.getNode().add(image);
+        group.myIndex = i;
+        layer.add(group);
+
+        var image = new Image({
+            image: tileConfig.image,
+        })
+        group.add(image);
 
         var simpleText = new Text({
-            x: objX + tileConfig.width / 2,
-            y: objY + tileConfig.height / 2,
+            x: tileConfig.width / 2,
+            y: tileConfig.height / 2,
             text: i + 1 + "",
             fontSize: 100,
         });
-        tileLayerRef.value.getNode().add(simpleText);
+        group.add(simpleText);
     }
 }
 
@@ -318,6 +331,7 @@ function refreshBlockLayer() {
 const stageRef = shallowRef(null);
 const tileLayerRef = shallowRef(null);
 const blockLayerRef = shallowRef(null);
+const selected = ref([]);
 onMounted(() => {
     for (const key in TileConfig) {
         const element = TileConfig[key];
@@ -329,8 +343,6 @@ onMounted(() => {
         element.image = new window.Image();
         element.image.src = element.img;
     }
-
-
 
     window.tileLayerRef = tileLayerRef;
     window.stageRef = stageRef;
@@ -371,6 +383,92 @@ onMounted(() => {
         };
         stage.position(newPos);
     });
+
+    stage.on('click', (e) => {
+        var temp = [];
+        var parent = getParentCanSelect(e.target);
+        if (parent) {
+            temp.push(parent);
+        }
+        selected.value = temp;
+    });
+});
+
+function getParentCanSelect(shape) {
+    var parent = shape;
+    while (parent && !parent.hasName("select")) {
+        parent = shape.getParent();
+    }
+    return parent;
+}
+
+
+function makeSelectedMark(shape, mark) {
+
+    if (mark) {
+        var oldZIndex = shape.zIndex();
+        shape.moveToTop();
+        shape.oldZIndex = oldZIndex;
+    }
+    else {
+        shape.zIndex(shape.oldZIndex);
+    }
+
+    for (let i = 0; i < shape.getChildren().length; i++) {
+        const element = shape.getChildren()[i];
+
+        if (mark) {
+            element.shadowColor("red");
+            element.shadowOffset({ x: 5, y: -5 });
+            element.shadowBlur(3);
+        }
+        else {
+            element.shadowColor("black");
+            element.shadowOffset({ x: 0, y: 0 });
+            element.shadowBlur(0);
+        }
+    }
+
+}
+
+watch(selected, (newValue, oldValue) => {
+    if (oldValue) {
+        for (let i = 0; i < oldValue.length; i++) {
+            const element = oldValue[i];
+            if (!element.getParent()) {
+                continue;
+            }
+            makeSelectedMark(element, false);
+        }
+    }
+
+    for (let i = 0; i < newValue.length; i++) {
+        const element = newValue[i];
+        makeSelectedMark(element, true);
+    }
+
+    var element = newValue[0];
+    if (element) {
+        selectedData.value = {
+            shape: element,
+            index: element.myIndex,
+        }
+    }
+    else {
+        selectedData.value = null;
+    }
+});
+
+const selectedData = ref(null);
+const tileMenuEnabled = computed(() => {
+    return selectedData.value && selectedData.value.shape.hasName("tile");
+});
+
+const selectedMapTile = computed(() => {
+    if (selectedData.value) {
+        return mapData.value.tiles[selectedData.value.index];
+    }
+    return null;
 });
 
 </script>
@@ -386,10 +484,33 @@ onMounted(() => {
         </v-stage>
         </Col>
         <Col :span="8">
-        <Collapse model-value="2">
+
+        <ButtonGroup>
+            <Button @click="onClickAddMapTile" :disabled="!tileMenuEnabled">添加地块</Button>
+            <Button @click="onClickSubMapTile" :disabled="!tileMenuEnabled">删除地块</Button>
+        </ButtonGroup>
+
+        <template v-if="selectedMapTile">
+            <div>地块类型</div>
+            <Select v-model="selectedMapTile.type">
+                <Option :value="0">空</Option>
+                <Option :value="1">平地</Option>
+                <Option :value="2">下坡</Option>
+                <Option :value="3">上坡</Option>
+                <Option :value="4">悬崖开始</Option>
+                <Option :value="5">悬崖结束</Option>
+                <Option :value="6">高台</Option>
+            </Select>
+
+            <div>额外高度偏移</div>
+            <InputNumber v-model="selectedMapTile.platOffsetY" :step="100"></InputNumber>
+        </template>
+
+        <!-- <Collapse model-value="2">
             <Panel>
                 图块配置
                 <template #content>
+
                     <template v-for="mapTile, i in mapData.tiles">
                         <Row>
                             <Col :span="1">
@@ -410,9 +531,9 @@ onMounted(() => {
                             <Button @click="onClickAddMapTile(i)">+</Button>
                             <Button v-if="i > 0" @click="onClickSubMapTile(i)">-</Button>
                             </Col>
-                            <Col :span="10" v-if="mapTile.grade != null">
+                            <Col :span="10" v-if="mapTile.platOffsetY != null">
                             <Tooltip content="高台高度">
-                                <InputNumber v-model="mapTile.grade" :number="true" :step="100"></InputNumber>
+                                <InputNumber v-model="mapTile.platOffsetY" :number="true" :step="100"></InputNumber>
                             </Tooltip>
                             </Col>
                         </Row>
@@ -449,7 +570,7 @@ onMounted(() => {
                     </template>
                 </template>
             </Panel>
-        </Collapse>
+        </Collapse> -->
         </Col>
     </Row>
 </template>

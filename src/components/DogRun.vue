@@ -1,7 +1,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted, shallowRef, watch } from "vue";
-import { Image, Text, Group } from "konva"
+import { Image, Text, Group, Layer, Rect } from "konva"
 import ViewUIPlus from 'view-ui-plus'
+import VueKonva from "vue-konva"
 
 const TileType = {
     Empty: 0,
@@ -88,132 +89,156 @@ const BlockConfig = {
         height: 180,
     }
 }
+const CoinConfig = {
+    img: "common/common_item_0.png",
+    width: 150,
+    height: 150,
+}
+
+function getTileDefault() {
+    return [
+        {
+            t: 1,
+        },
+        {
+            t: 2,
+        },
+        {
+            t: 1,
+        },
+        {
+            t: 1,
+        },
+        {
+            t: 3,
+        },
+        {
+            t: 3,
+        },
+        {
+            t: 3,
+        },
+        {
+            t: 4,
+        },
+        {
+            t: 6,
+            platOffsetY: 200,
+        },
+        {
+            t: 6,
+        },
+        {
+            t: 6,
+        },
+        {
+            t: 6,
+        },
+        {
+            t: 6,
+        },
+        {
+            t: 5,
+            platOffsetY: -200,
+        },
+        {
+            t: 1,
+        },
+        {
+            t: 1,
+        },
+    ];
+}
+
+function getMapDefault() {
+    return {
+        startPos: { x: 0, y: 0 },
+        tiles: getTileDefault(),
+    }
+}
+
 const mapData = ref({
-    blocks: [
-        {
-            type: 1,
-        }
-    ],
-    startPos: { x: 0, y: 0 },
-    tiles: [
-        {
-            type: 1,
-        },
-        {
-            type: 10,
-        },
-        {
-            type: 0,
-        },
-        {
-            type: 0,
-        },
-        {
-            type: 0,
-        },
-        {
-            type: 0,
-        },
-        {
-            type: 0,
-        },
-        {
-            type: 2,
-        },
-        {
-            type: 1,
-        },
-        {
-            type: 1,
-        },
-        {
-            type: 3,
-        },
-        {
-            type: 3,
-        },
-        {
-            type: 3,
-        },
-        {
-            type: 4,
-        },
-        {
-            type: 6,
-        },
-        {
-            type: 6,
-        },
-        {
-            type: 6,
-        },
-        {
-            type: 6,
-        },
-        {
-            type: 6,
-        },
-        {
-            type: 5,
-        },
-        {
-            type: 1,
-        },
-        {
-            type: 1,
-        },
+    maps: [
+        getMapDefault(),
+        getMapDefault(),
     ]
 });
 
-function onClickExport() {
+function onClickCopy() {
     var res = JSON.parse(JSON.stringify(mapData.value));
-    delete res.startPos;
-    for (let i = 0; i < res.tiles.length; i++) {
-        const element = res.tiles[i];
-        element.t = element.type;
-        delete element.type;
-        if (element.rands.length == 0) {
-            delete element.rands;
-        }
-        if (element.platOffsetY == 0) {
-            delete element.platOffsetY;
-        }
-    }
-
-    var children = blockLayerRef.value.getNode().getChildren().concat([]);
-    children = children.sort((a, b) => {
-        return a.x() - b.x();
-    });
-    for (let i = 0; i < res.blocks.length; i++) {
-        const element = res.blocks[i];
-        element.t = element.type;
-        delete element.type;
-        element.x = Math.floor(children[i].x());
-        element.y = Math.floor(children[i].y());
-    }
-    // console.log(res);
     ViewUIPlus.Copy({ text: JSON.stringify(res) });
 }
 
+function onClickExport() {
+    var text = JSON.stringify(mapData.value);
+    var blob = new Blob([text], { type: 'text/plain' });
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = "map.json";
+    a.click();
+}
+
+async function onClickImport(file) {
+    try {
+        selected.value = [];
+        var text = await file.text();
+        var obj = JSON.parse(text);
+        // mapData.value = obj;
+        mapData.value.maps = obj.maps;
+    }
+    catch (e) {
+        console.error(e);
+    }
+    return false;
+}
+
+function onClickClearHistory() {
+    localStorage.setItem("DogRun.mapData", null);
+}
+
 function onClickAddMapTile() {
-    if (!selectedData.value) {
+    let { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null) {
         return;
     }
-    var tileIndex = selectedData.value.index;
-    var pre = mapData.value.tiles[tileIndex];
+    var mapObj = mapData.value.maps[mapId];
+    var pre = mapObj.tiles[tileId];
     var cur = JSON.parse(JSON.stringify(pre));
     cur.platOffsetY = 0;
-    mapData.value.tiles.splice(tileIndex + 1, 0, cur);
+    mapObj.tiles.splice(tileId + 1, 0, cur);
     selected.value = [];
+    refreshMapLayer();
 }
 
 function onClickSubMapTile() {
-    if (!selectedData.value) {
+    let { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null) {
         return;
     }
-    var tileIndex = selectedData.value.index;
-    mapData.value.tiles.splice(tileIndex, 1);
+    var mapObj = mapData.value.maps[mapId];
+    mapObj.tiles.splice(tileId, 1);
     selected.value = [];
+    refreshMapLayer();
+}
+
+function onClickAddMap() {
+    var { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null) {
+        return;
+    }
+    selected.value = [];
+    mapData.value.maps.splice(mapId, 0, getMapDefault());
+    // refreshMapLayer();
+}
+function onClickSubMap() {
+    var { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null) {
+        return;
+    }
+
+    selected.value = [];
+    mapData.value.maps.splice(mapId, 1);
+    // refreshMapLayer();
 }
 
 function onClickAddMapBlock() {
@@ -223,7 +248,7 @@ function onClickAddMapBlock() {
     else {
         var index = 0;
     }
-    var pre = mapData.value.blocks[index] || { type: 1 };
+    var pre = mapData.value.blocks[index] || { t: 1 };
     var cur = JSON.parse(JSON.stringify(pre));
     mapData.value.blocks.splice(index + 1, 0, cur);
     selected.value = [];
@@ -246,19 +271,15 @@ function onClickSubMapBlock() {
 }
 
 
-watch(mapData.value.tiles, () => {
-    refreshTileLayer();
+watch(mapData.value, () => {
+    refreshMapLayer();
 });
-watch(mapData.value.blocks, () => {
-    refreshBlockLayer();
-});
+// watch(mapData.value.blocks, () => {
+//     refreshBlockLayer();
+// });
 
 
-function refreshTileLayer() {
-    var mapObj = mapData.value;
-    var layer = tileLayerRef.value.getNode();
-
-    layer.removeChildren();
+function refreshTileLayer(layer, mapObj, mapId) {
 
     var tiles = mapObj.tiles;
 
@@ -272,11 +293,11 @@ function refreshTileLayer() {
         }
     }
 
-    var x = 0;
-    var y = mapObj.startPos.y;
+    var x = mapObj.startPos.x + 100;
+    var y = mapObj.startPos.y + 320;
     for (let i = 0; i < tiles.length; i++) {
         const mapTile = tiles[i];
-        const tileConfig = TileConfig[mapTile.type];
+        const tileConfig = TileConfig[mapTile.t];
         const objX = x;
         x += tileConfig.width;
 
@@ -286,8 +307,8 @@ function refreshTileLayer() {
         let offsetY = 0;
         if (i > 0) {
             tileMapPre = tiles[i - 1];
-            tileConfigPre = TileConfig[tileMapPre.type];
-            offsetYName = `${tileMapPre.type}_${mapTile.type}`;
+            tileConfigPre = TileConfig[tileMapPre.t];
+            offsetYName = `${tileMapPre.t}_${mapTile.t}`;
             offsetY = OffsetConfigY[offsetYName] || 0;
         }
         y += offsetY;
@@ -300,10 +321,11 @@ function refreshTileLayer() {
         var group = new Group({
             x: objX,
             y: objY,
-            name: `tile select index${i}`,
-            draggable: true,
         })
-        group.myIndex = i;
+        group.index = i;
+        group.isTile = true;
+        group.mapId = mapId;
+        group.tileId = i;
         layer.add(group);
 
         var image = new Image({
@@ -318,6 +340,29 @@ function refreshTileLayer() {
             fontSize: 100,
         });
         group.add(simpleText);
+
+        if (mapTile.b) //有障碍
+        {
+            var block = new Image({
+                image: BlockConfig[1].image,
+                x: tileConfig.width / 2,
+                y: tileConfig.height / 5,
+                offsetX: BlockConfig[1].width / 2,
+            })
+            group.add(block);
+        }
+
+        if (mapTile.c) //有金币
+        {
+            var block = new Image({
+                image: CoinConfig.image,
+                x: tileConfig.width / 2,
+                y: tileConfig.height / 5,
+                offsetX: CoinConfig.width / 2,
+                scale: { x: 0.5, y: 0.5 },
+            })
+            group.add(block);
+        }
     }
 }
 
@@ -342,7 +387,7 @@ function refreshBlockLayer() {
             id: `block${index}`,
             x, y,
         });
-        group.myIndex = index;
+        group.index = index;
         layer.add(group);
     }
 
@@ -353,14 +398,14 @@ function refreshBlockLayer() {
 
     for (let i = 0; i < blocks.length; i++) {
         const blockData = blocks[i];
-        const blockConfig = BlockConfig[blockData.type];
+        const blockConfig = BlockConfig[blockData.t];
         var group = children[i];
         group = children[i];
         group.setAttrs({
             id: `block${i}`,
         })
         group.name("block select");
-        group.myIndex = i;
+        group.index = i;
 
         var image = group.findOne("#myimage");
         var text = group.findOne("#mytext");
@@ -405,9 +450,54 @@ function refreshBlockLayer() {
     }
 }
 
+function getRandColor() {
+    var r = Math.floor(Math.random() * 255);
+    var g = Math.floor(Math.random() * 255);
+    var b = Math.floor(Math.random() * 255);
+    return `rgb(${r},${g},${b})`;
+}
+
+function refreshMapLayer() {
+    var stage = stageRef.value.getNode();
+    stage.removeChildren();
+
+    var y = 0;
+    for (let i = 0; i < mapData.value.maps.length; i++) {
+        const mapObj = mapData.value.maps[i];
+
+        var layer = new Layer({
+            x: 0,
+            y: y,
+            // draggable: true,
+        });
+        stage.add(layer);
+
+        var guideRect = new Rect({
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 640 * 2,
+            fill: getRandColor(),
+        });
+        layer.add(guideRect);
+
+        var simpleText = new Text({
+            x: 0,
+            y: 320,
+            text: i + 1 + "",
+            fontSize: 100,
+        });
+        layer.add(simpleText);
+
+        refreshTileLayer(layer, mapObj, i);
+
+        y += 640 * 2;
+    }
+}
 
 const stageRef = shallowRef(null);
-const tileLayerRef = shallowRef(null);
+// const mapLayerRef = shallowRef(null);
+const tileLayers = shallowRef([]);
 const blockLayerRef = shallowRef(null);
 const selected = ref([]);
 onMounted(() => {
@@ -422,11 +512,17 @@ onMounted(() => {
         element.image.src = element.img;
     }
 
-    window.tileLayerRef = tileLayerRef;
+    CoinConfig.image = new window.Image();
+    CoinConfig.image.src = CoinConfig.img;
+
+    // window.mapLayerRef = mapLayerRef;
     window.stageRef = stageRef;
+    window.stage = stageRef.value.getNode();
     window.mapData = mapData;
-    refreshTileLayer();
-    refreshBlockLayer();
+    window.VueKonva = VueKonva;
+    refreshMapLayer();
+    // refreshTileLayer();
+    // refreshBlockLayer();
 
     var stage = stageRef.value.getNode();
 
@@ -470,11 +566,23 @@ onMounted(() => {
         }
         selected.value = temp;
     });
+
+    var history = localStorage.getItem('DogRun.mapData');
+    try {
+        var text = history;
+        var obj = JSON.parse(text);
+        mapData.value.maps = obj.maps;
+    }
+    catch (e) {
+    }
+    setInterval(() => {
+        localStorage.setItem('DogRun.mapData', JSON.stringify(mapData.value));
+    }, 5000);
 });
 
 function getParentCanSelect(shape) {
     var parent = shape;
-    while (parent && !parent.hasName("select")) {
+    while (parent && !parent.isTile) {
         parent = parent.getParent();
     }
     return parent;
@@ -529,7 +637,7 @@ watch(selected, (newValue, oldValue) => {
     if (element) {
         selectedData.value = {
             shape: element,
-            index: element.myIndex,
+            index: element.index,
         }
     }
     else {
@@ -538,19 +646,55 @@ watch(selected, (newValue, oldValue) => {
 });
 
 const selectedData = ref(null);
+const selectedShape = computed(() => {
+    return selected.value[0];
+});
 const tileMenuEnabled = computed(() => {
+    let { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null) {
+        return false;
+    }
+    if (tileId == null) {
+        return false;
+    }
+    return true;
+});
+const tileMenu2Enabled = computed(() => {
+    let { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null) {
+        return false;
+    }
+    if (tileId == null) {
+        return false;
+    }
+    return mapData.value.maps[mapId].tiles.length > 1;
+});
+const mapMenuEnabled = computed(() => {
+    return selectedData.value;
     return selectedData.value && selectedData.value.shape.hasName("tile");
 });
+const mapMenu2Enabled = computed(() => {
+    return selectedData.value && mapData.value.maps.length > 1;
+    return selectedData.value && selectedData.value.shape.hasName("tile");
+});
+
 const blockMenuEnabled = computed(() => {
     return true;
     return selectedData.value && selectedData.value.shape.hasName("block");
 });
 
 const selectedMapTile = computed(() => {
-    if (tileMenuEnabled.value) {
-        return mapData.value.tiles[selectedData.value.index];
+    let { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId >= 0 && tileId >= 0) {
+        return mapData.value.maps[mapId].tiles[tileId];
     }
     return null;
+});
+const selectedMapTileInfo = computed(() => {
+    if (selectedShape.value) {
+        return { mapId: selectedShape.value.mapId, tileId: selectedShape.value.tileId, node: selectedShape.value };
+    }
+    return {};
 });
 const selectedMapBlock = computed(() => {
     if (selectedData.value && selectedData.value.shape.hasName("block")) {
@@ -565,133 +709,71 @@ const selectedMapBlock = computed(() => {
     <Row>
         <Col :span="16">
         <v-stage ref="stageRef" :config="{ width: 1136, height: 640, draggable: true }">
-            <v-layer ref="tileLayerRef">
+            <!-- <v-layer ref="mapLayerRef">
+            </v-layer>
+            <v-layer :config="{ draggable: true, fill: 'red' }">
+                <v-rect :config="{ width: 50, height: 640, fill: 'black', draggable: false }"></v-rect>
+                <v-rect :config="{ width: 100, height: 640, fill: 'black', x: 200, draggable: false }"></v-rect>
+            </v-layer>
+            <v-layer :config="{ draggable: true, fill: 'red' }">
+                <v-rect :config="{ width: 50, height: 640, fill: 'green', draggable: false }"></v-rect>
+                <v-rect :config="{ width: 100, height: 640, fill: 'green', x: 200, draggable: false }"></v-rect>
+            </v-layer>
+            <v-layer :config="{ draggable: true, fill: 'red' }">
+                <v-rect :config="{ width: 50, height: 640, fill: 'red', draggable: false }"></v-rect>
+                <v-rect :config="{ width: 100, height: 640, fill: 'red', x: 200, draggable: false }"></v-rect>
             </v-layer>
             <v-layer ref="blockLayerRef">
-            </v-layer>
+            </v-layer> -->
         </v-stage>
         </Col>
         <Col :span="8">
 
         <Divider>统计</Divider>
-        <p>当前共有{{ mapData.tiles.length }}个地块</p>
-        <p>当前共有{{ mapData.blocks.length }}个障碍</p>
-        <Button @click="onClickExport">复制到剪贴板</Button>
+        <p>当前共有{{ mapData.maps.length }}个地图段</p>
+        <Button @click="onClickCopy">复制到剪贴板</Button>
+        <Button @click="onClickExport">下载地图</Button>
+        <Upload :before-upload="onClickImport" action="" accept=".json">
+            <Button>导入地图</Button>
+        </Upload>
+        <Button @click="onClickClearHistory">清除历史</Button>
 
         <Divider>地块操作</Divider>
-        <ButtonGroup>
-            <Button @click="onClickAddMapTile" :disabled="!tileMenuEnabled">添加地块</Button>
-            <Button @click="onClickSubMapTile" :disabled="!tileMenuEnabled">删除地块</Button>
-        </ButtonGroup>
+        <Space>
+            <ButtonGroup>
+                <Button @click="onClickAddMap" :disabled="!mapMenuEnabled">添加地图段</Button>
+                <Button @click="onClickSubMap" :disabled="!mapMenu2Enabled">删除地图段</Button>
+            </ButtonGroup>
+            <ButtonGroup>
+                <Button @click="onClickAddMapTile" :disabled="!tileMenuEnabled">添加地块</Button>
+                <Button @click="onClickSubMapTile" :disabled="!tileMenu2Enabled">删除地块</Button>
+            </ButtonGroup>
+        </Space>
+        <br />
         <template v-if="selectedMapTile">
+
             <div>地块类型</div>
-            <Select v-model="selectedMapTile.type">
-                <Option :value="0">空</Option>
+            <Select v-model="selectedMapTile.t">
                 <Option :value="1">平地</Option>
                 <Option :value="2">下坡</Option>
                 <Option :value="3">上坡</Option>
                 <Option :value="4">悬崖开始</Option>
                 <Option :value="5">悬崖结束</Option>
                 <Option :value="6">高台</Option>
-                <Option :value="10">随机</Option>
             </Select>
-
             <div>额外高度偏移</div>
             <InputNumber v-model="selectedMapTile.platOffsetY" :step="100"></InputNumber>
 
-            <template v-if="selectedMapTile.type == 10">
-                <div>随机地块类型</div>
-                <Select v-model="selectedMapTile.rands" :multiple="true">
-                    <Option :value="0">空</Option>
-                    <Option :value="1">平地</Option>
-                    <Option :value="2">下坡</Option>
-                    <Option :value="3">上坡</Option>
-                    <Option :value="4">悬崖开始</Option>
-                    <Option :value="5">悬崖结束</Option>
-                    <Option :value="6">高台</Option>
-                </Select>
-            </template>
+            <div>
+                <Checkbox v-model="selectedMapTile.b">是否有障碍</Checkbox>
+            </div>
+
+            <div>
+                <Checkbox v-model="selectedMapTile.c">是否有金币</Checkbox>
+            </div>
 
         </template>
 
-        <Divider>障碍物操作</Divider>
-        <ButtonGroup>
-            <Button @click="onClickAddMapBlock" :disabled="!blockMenuEnabled">添加障碍</Button>
-            <Button @click="onClickSubMapBlock" :disabled="!blockMenuEnabled">删除障碍</Button>
-        </ButtonGroup>
-        <template v-if="selectedMapBlock">
-            <div>地块类型</div>
-            <Select v-model="selectedMapBlock.type">
-                <Option :value="1">障碍物A</Option>
-                <Option :value="2">障碍物B</Option>
-            </Select>
-        </template>
-
-        <!-- <Collapse model-value="2">
-            <Panel>
-                图块配置
-                <template #content>
-
-                    <template v-for="mapTile, i in mapData.tiles">
-                        <Row>
-                            <Col :span="1">
-                            <p>{{ i + 1 }}</p>
-                            </Col>
-                            <Col :span="6">
-                            <Select v-model="mapTile.type">
-                                <Option :value="0">空</Option>
-                                <Option :value="1">平地</Option>
-                                <Option :value="2">下坡</Option>
-                                <Option :value="3">上坡</Option>
-                                <Option :value="4">悬崖开始</Option>
-                                <Option :value="5">悬崖结束</Option>
-                                <Option :value="6">高台</Option>
-                            </Select>
-                            </Col>
-                            <Col :span="4">
-                            <Button @click="onClickAddMapTile(i)">+</Button>
-                            <Button v-if="i > 0" @click="onClickSubMapTile(i)">-</Button>
-                            </Col>
-                            <Col :span="10" v-if="mapTile.platOffsetY != null">
-                            <Tooltip content="高台高度">
-                                <InputNumber v-model="mapTile.platOffsetY" :number="true" :step="100"></InputNumber>
-                            </Tooltip>
-                            </Col>
-                        </Row>
-                    </template>
-                </template>
-            </Panel>
-            <Panel>
-                障碍物配置
-                <template #content>
-                    <template v-if="mapData.blocks.length > 0">
-                        <template v-for="blockData, i in mapData.blocks">
-                            <Row>
-                                <Col :span="1">
-                                <p>{{ i + 1 }}</p>
-                                </Col>
-                                <Col :span="6">
-                                <span>
-                                    <Select v-model="blockData.type">
-                                        <Option :value="1">障碍1</Option>
-                                        <Option :value="2">障碍2</Option>
-                                    </Select>
-                                </span>
-                                </Col>
-                                <Col :span="4">
-                                <Button @click="onClickAddMapBlock(i)">+</Button>
-                                <Button @click="onClickSubMapBlock(i)">-</Button>
-                                </Col>
-                            </Row>
-                        </template>
-
-                    </template>
-                    <template v-if="mapData.blocks.length == 0">
-                        <Button @click="onClickAddMapBlock(null)">+</Button>
-                    </template>
-                </template>
-            </Panel>
-        </Collapse> -->
         </Col>
     </Row>
 </template>

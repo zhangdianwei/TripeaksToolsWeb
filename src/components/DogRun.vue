@@ -164,13 +164,32 @@ const mapData = ref({
     ]
 });
 
-function onClickCopy() {
+function getExportMapData() {
     var res = JSON.parse(JSON.stringify(mapData.value));
-    ViewUIPlus.Copy({ text: JSON.stringify(res) });
+    for (let i = 0; i < res.maps.length; i++) {
+        const map = res.maps[i];
+        for (let j = 0; j < map.tiles.length; j++) {
+            const tile = map.tiles[j];
+            if (!tile.platOffsetY) {
+                delete tile.platOffsetY;
+            }
+            if (!tile.b) {
+                delete tile.b;
+            }
+            if (!tile.c) {
+                delete tile.c;
+            }
+        }
+    }
+    return res;
+}
+
+function onClickCopy() {
+    ViewUIPlus.Copy({ text: JSON.stringify(getExportMapData()) });
 }
 
 function onClickExport() {
-    var text = JSON.stringify(mapData.value);
+    var text = JSON.stringify(getExportMapData());
     var blob = new Blob([text], { type: 'text/plain' });
     let a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

@@ -159,8 +159,34 @@ function getMapDefault() {
 
 const mapData = ref({
     maps: [
-        getMapDefault(),
-        getMapDefault(),
+        {
+            startPos: { x: 0, y: 0 },
+            tiles: [
+                { t: 1 },
+                { t: 1 },
+            ],
+        },
+        {
+            startPos: { x: 1, y: 1 },
+            tiles: [
+                { t: 2 },
+                { t: 2 },
+            ],
+        },
+        {
+            startPos: { x: 0, y: 0 },
+            tiles: [
+                { t: 1 },
+                { t: 1 },
+            ],
+        },
+        {
+            startPos: { x: 1, y: 1 },
+            tiles: [
+                { t: 3 },
+                { t: 3 },
+            ],
+        },
     ]
 });
 
@@ -246,8 +272,10 @@ function onClickAddMap() {
         return;
     }
     selected.value = [];
-    mapData.value.maps.splice(mapId, 0, getMapDefault());
-    // refreshMapLayer();
+
+    var map = mapData.value.maps[mapId];
+    var map = JSON.parse(JSON.stringify(map));
+    mapData.value.maps.splice(mapId, 0, map);
 }
 function onClickSubMap() {
     var { mapId, tileId } = selectedMapTileInfo.value;
@@ -313,7 +341,7 @@ function refreshTileLayer(layer, mapObj, mapId) {
     }
 
     var x = mapObj.startPos.x + 100;
-    var y = mapObj.startPos.y + 320;
+    var y = mapObj.startPos.y + 640;
     for (let i = 0; i < tiles.length; i++) {
         const mapTile = tiles[i];
         const tileConfig = TileConfig[mapTile.t];
@@ -349,14 +377,16 @@ function refreshTileLayer(layer, mapObj, mapId) {
 
         var image = new Image({
             image: tileConfig.image,
+            x: 0,
+            y: 640,
         })
         group.add(image);
 
         var simpleText = new Text({
             x: tileConfig.width / 2,
-            y: tileConfig.height / 2,
+            y: tileConfig.height,
             text: i + 1 + "",
-            fontSize: 100,
+            fontSize: 200,
         });
         group.add(simpleText);
 
@@ -480,6 +510,8 @@ function refreshMapLayer() {
     var stage = stageRef.value.getNode();
     stage.removeChildren();
 
+    var layerHeight = 640 * 2;
+
     var y = 0;
     for (let i = 0; i < mapData.value.maps.length; i++) {
         const mapObj = mapData.value.maps[i];
@@ -495,14 +527,14 @@ function refreshMapLayer() {
             x: 0,
             y: 0,
             width: 100,
-            height: 640 * 2,
+            height: layerHeight * 2,
             fill: getRandColor(),
         });
         layer.add(guideRect);
 
         var simpleText = new Text({
             x: 0,
-            y: 320,
+            y: layerHeight / 2,
             text: i + 1 + "",
             fontSize: 100,
         });
@@ -510,7 +542,7 @@ function refreshMapLayer() {
 
         refreshTileLayer(layer, mapObj, i);
 
-        y += 640 * 2;
+        y += layerHeight * 2;
     }
 }
 
@@ -758,17 +790,21 @@ const selectedMapBlock = computed(() => {
         <Button @click="onClickClearHistory">清除历史</Button>
 
         <Divider>地块操作</Divider>
-        <Space>
-            <ButtonGroup>
-                <Button @click="onClickAddMap" :disabled="!mapMenuEnabled">添加地图段</Button>
-                <Button @click="onClickSubMap" :disabled="!mapMenu2Enabled">删除地图段</Button>
-            </ButtonGroup>
-            <ButtonGroup>
-                <Button @click="onClickAddMapTile" :disabled="!tileMenuEnabled">添加地块</Button>
-                <Button @click="onClickSubMapTile" :disabled="!tileMenu2Enabled">删除地块</Button>
-            </ButtonGroup>
-        </Space>
+
+
+        <ButtonGroup>
+            <Button @click="onClickAddMapTile" :disabled="!tileMenuEnabled">添加地块</Button>
+            <Button @click="onClickSubMapTile" :disabled="!tileMenu2Enabled">删除地块</Button>
+        </ButtonGroup>
         <br />
+        <br />
+        <ButtonGroup>
+            <Button @click="onClickAddMap" :disabled="!mapMenuEnabled">添加地图段</Button>
+            <Button @click="onClickSubMap" :disabled="!mapMenu2Enabled">删除地图段</Button>
+        </ButtonGroup>
+
+        <Divider>地块详细信息</Divider>
+
         <template v-if="selectedMapTile">
 
             <div>地块类型</div>

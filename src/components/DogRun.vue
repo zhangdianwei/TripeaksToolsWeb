@@ -4,77 +4,60 @@ import { Image, Text, Group, Layer, Rect } from "konva"
 import ViewUIPlus from 'view-ui-plus'
 import VueKonva from "vue-konva"
 
-const TileType = {
-    Empty: 0,
-    Road: 1,
-    SlopeDown: 2,
-    SlopeUp: 3,
-    CliffStart: 4,
-    CliffEnd: 5,
-    Platform: 6,
-    Random: 10,
-}
-const BlockType = {
-    StyleA: 1,
-    StyleB: 2,
-}
 const OffsetConfigY = {
-    "1_2": 0,
-    "2_2": 99,
-    "2_1": 100,
-    "1_3": -86,
-    "3_4": -12,
-    "5_1": -12,
-    "3_3": -100,
+    "1_2": 80,
+    "1_3": -55,
+    "1_4": 0,
+
+    "2_1": 55,
+    "2_2": 136,
+    "2_3": 0,
+    "2_4": 55,
+
+    "3_1": -80,
+    "3_3": -136,
+    "3_4": -80,
+
+    "5_1": 0,
+    "5_2": 81,
+    "5_3": -56,
 }
 const TileConfig = {
-    "0": {
-        img: "dog_run/dog_run_lu_0.png",
-        width: 200,
-        height: 600,
-        name: "空",
-    },
     "1": {
-        img: "dog_run/dog_run_lu_1.png",
-        width: 605,
-        height: 620,
+        img: "dog_run/dog_run_lu1_1.png",
+        width: 606,
+        height: 531,
         name: "平地",
     },
     "2": {
-        img: "dog_run/dog_run_lu_5.png",
-        width: 441,
-        height: 619,
+        img: "dog_run/dog_run_lu1_2.png",
+        width: 606,
+        height: 615,
         name: "下坡",
     },
     "3": {
-        img: "dog_run/dog_run_lu_4.png",
-        width: 443,
-        height: 605,
+        img: "dog_run/dog_run_lu1_3.png",
+        width: 606,
+        height: 615,
         name: "上坡",
     },
     "4": {
-        img: "dog_run/dog_run_lu_2.png",
-        width: 442,
-        height: 708,
+        img: "dog_run/dog_run_lu1_4.png",
+        width: 606,
+        height: 615,
         name: "悬崖开始",
     },
     "5": {
-        img: "dog_run/dog_run_lu_3.png",
-        width: 356,
-        height: 720,
+        img: "dog_run/dog_run_lu1_5.png",
+        width: 606,
+        height: 615,
         name: "悬崖结束",
     },
     "6": {
-        img: "dog_run/dog_run_lu_6.png",
-        width: 264,
-        height: 251,
+        img: "dog_run/dog_run_lu1_6.png",
+        width: 520,
+        height: 271,
         name: "高台",
-    },
-    "10": {
-        img: "dog_run/dog_run_lu_10.png",
-        width: 605,
-        height: 620,
-        name: "随机地块",
     },
 }
 const BlockConfig = {
@@ -286,35 +269,6 @@ function onClickSubMap() {
     selected.value = [];
     mapData.value.maps.splice(mapId, 1);
     // refreshMapLayer();
-}
-
-function onClickAddMapBlock() {
-    if (selectedData.value) {
-        var index = selectedData.value.index;
-    }
-    else {
-        var index = 0;
-    }
-    var pre = mapData.value.blocks[index] || { t: 1 };
-    var cur = JSON.parse(JSON.stringify(pre));
-    mapData.value.blocks.splice(index + 1, 0, cur);
-    selected.value = [];
-    refreshBlockLayer();
-}
-
-function onClickSubMapBlock() {
-    if (!selectedData.value) {
-        return;
-    }
-    var index = selectedData.value.index;
-    var group = blockLayerRef.value.getNode().findOne(`#block${index}`);
-    if (!group) {
-        return;
-    }
-    group.remove();
-    mapData.value.blocks.splice(index, 1);
-    selected.value = [];
-    refreshBlockLayer();
 }
 
 
@@ -747,11 +701,91 @@ const selectedMapTileInfo = computed(() => {
     }
     return {};
 });
-const selectedMapBlock = computed(() => {
-    if (selectedData.value && selectedData.value.shape.hasName("block")) {
-        return mapData.value.blocks[selectedData.value.index];
+
+const coin1Count = computed(() => {
+    let { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null || tileId == null) {
+        return 0;
     }
-    return null;
+    var map = mapData.value.maps[mapId];
+    let count = 0;
+    for (let i = 0; i < map.tiles.length; i++) {
+        const tile = map.tiles[i];
+        if (tile.c == 1) {
+            count += 1;
+        }
+    }
+    return count;
+});
+const coin2Count = computed(() => {
+    let { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null || tileId == null) {
+        return 0;
+    }
+    let map = mapData.value.maps[mapId];
+    let count = 0;
+    for (let i = 0; i < map.tiles.length; i++) {
+        const tile = map.tiles[i];
+        if (tile.c == 2) {
+            count += 1;
+        }
+    }
+    return count;
+});
+const coin3Count = computed(() => {
+    let { mapId, tileId } = selectedMapTileInfo.value;
+    if (mapId == null || tileId == null) {
+        return 0;
+    }
+    let map = mapData.value.maps[mapId];
+    let count = 0;
+    for (let i = 0; i < map.tiles.length; i++) {
+        const tile = map.tiles[i];
+        if (tile.c == 3) {
+            count += 1;
+        }
+    }
+    return count;
+});
+
+const coin1TotalCount = computed(() => {
+    let count = 0;
+    for (let mapId = 0; mapId < mapData.value.maps.length; mapId++) {
+        const map = mapData.value.maps[mapId];
+        for (let i = 0; i < map.tiles.length; i++) {
+            const tile = map.tiles[i];
+            if (tile.c == 1) {
+                count += 1;
+            }
+        }
+    }
+    return count;
+});
+const coin2TotalCount = computed(() => {
+    let count = 0;
+    for (let mapId = 0; mapId < mapData.value.maps.length; mapId++) {
+        const map = mapData.value.maps[mapId];
+        for (let i = 0; i < map.tiles.length; i++) {
+            const tile = map.tiles[i];
+            if (tile.c == 2) {
+                count += 1;
+            }
+        }
+    }
+    return count;
+});
+const coin3TotalCount = computed(() => {
+    let count = 0;
+    for (let mapId = 0; mapId < mapData.value.maps.length; mapId++) {
+        const map = mapData.value.maps[mapId];
+        for (let i = 0; i < map.tiles.length; i++) {
+            const tile = map.tiles[i];
+            if (tile.c == 3) {
+                count += 1;
+            }
+        }
+    }
+    return count;
 });
 
 </script>
@@ -782,6 +816,7 @@ const selectedMapBlock = computed(() => {
 
         <Divider>统计</Divider>
         <p>当前共有{{ mapData.maps.length }}个地图段</p>
+        <p>{{ coin1TotalCount }}个小金币，{{ coin2TotalCount }}个中金币，{{ coin3TotalCount }}个大金币</p>
         <Button @click="onClickCopy">复制到剪贴板</Button>
         <Button @click="onClickExport">下载地图</Button>
         <Upload :before-upload="onClickImport" action="" accept=".json">
@@ -791,6 +826,9 @@ const selectedMapBlock = computed(() => {
 
         <Divider>地块操作</Divider>
 
+        <div v-if="selectedData">
+            共有小金币{{ coin1Count }}个，中金币{{ coin2Count }}个，大金币{{ coin3Count }}个。
+        </div>
 
         <ButtonGroup>
             <Button @click="onClickAddMapTile" :disabled="!tileMenuEnabled">添加地块</Button>
@@ -819,12 +857,19 @@ const selectedMapBlock = computed(() => {
             <div>额外高度偏移</div>
             <InputNumber v-model="selectedMapTile.platOffsetY" :step="100"></InputNumber>
 
-            <div>
+            <!-- <div>
                 <Checkbox v-model="selectedMapTile.b">是否有障碍</Checkbox>
-            </div>
+            </div> -->
 
             <div>
-                <Checkbox v-model="selectedMapTile.c">是否有金币</Checkbox>
+                金币类型
+                <!-- <Checkbox v-model="selectedMapTile.c">是否有金币</Checkbox> -->
+                <Select v-model="selectedMapTile.c">
+                    <Option :value="0">无</Option>
+                    <Option :value="1">小金币</Option>
+                    <Option :value="2">中金币</Option>
+                    <Option :value="3">大金币</Option>
+                </Select>
             </div>
 
         </template>

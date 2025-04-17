@@ -3,7 +3,12 @@
         <Tabs :animated="false" class="full-tabs">
             <TabPane label="高级设置" name="advanced">
                 <div class="advanced-settings full-advanced">
-                    <label style="display:block;margin-bottom:4px;">高级设置：</label>
+                    <div class="advanced-header-row">
+                        <Button type="primary" size="large" ghost style="margin-right:18px;" @click="showAdvancedModal = true">
+                            <Icon type="ios-eye" style="margin-right:6px;" />显示高级设置
+                        </Button>
+                        <label style="font-size:18px;font-weight:500;">高级设置：</label>
+                    </div>
                     <div class="treasure-list-scroll">
                         <Row gutter="8" v-for="item in treasures" :key="item.id" style="margin-bottom:4px;align-items:center;">
                             <Col :span="4">
@@ -23,9 +28,6 @@
                                 <InputNumber v-model="item.size[1]" :min="1" :max="5" style="width:60px" />
                             </Col>
                         </Row>
-                    </div>
-                    <div style="margin-top:12px;text-align:right;">
-                        <Button @click="showAdvancedModal = true">显示高级设置</Button>
                     </div>
                     <Modal v-model="showAdvancedModal" title="高级设置 JSON" :footer-hide="true" width="600" class="advanced-modal">
                         <div class="advanced-modal-content">
@@ -110,21 +112,41 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { Row, Col, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon } from 'view-ui-plus'
+
+const TREASURE_KEY = 'buried_bounty_treasures_v1'
+
+// 优先从localStorage恢复宝藏设置
+function getInitialTreasures() {
+    try {
+        const str = localStorage.getItem(TREASURE_KEY)
+        if (str) {
+            const arr = JSON.parse(str)
+            if (Array.isArray(arr) && arr.length === 23) {
+                return arr.map(t => ({ id: t.id, size: t.size.slice() }))
+            }
+        }
+    } catch(e) {}
+    // 默认23个宝藏
+    const sizeOptions = [ [2,1], [1,2], [2,2], [1,1] ]
+    return Array.from({ length: 23 }, (_, i) => ({
+        id: i + 1,
+        size: sizeOptions[i % sizeOptions.length].slice(),
+    }))
+}
+
+const treasures = reactive(getInitialTreasures())
+
+// 自动保存到localStorage
+watch(treasures, (val) => {
+    localStorage.setItem(TREASURE_KEY, JSON.stringify(val.map(t => ({ id: t.id, size: t.size.slice() }))))
+}, { deep: true })
 
 const tileImg = 'buried_bounty/tile.png'
 function treasureImg(id) {
     return `buried_bounty/item/item_${id}_1.png`
 }
-
-const sizeOptions = [ [2,1], [1,2], [2,2], [1,1] ]
-const treasures = reactive(
-    Array.from({ length: 23 }, (_, i) => ({
-        id: i + 1,
-        size: sizeOptions[i % sizeOptions.length].slice(),
-    }))
-)
 
 const level = reactive({ gridN: 6, gridM: 6 })
 const selectedTreasures = ref([1, 2])
@@ -261,6 +283,12 @@ selectedTreasures.value.forEach(tid => {
 </script>
 
 <style scoped>
+.advanced-header-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 10px;
+}
 .buried-bounty-editor {
     display: flex;
     flex-direction: column;

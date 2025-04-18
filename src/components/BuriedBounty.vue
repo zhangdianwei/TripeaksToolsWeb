@@ -134,11 +134,8 @@
                                 </Tooltip>
                                 <!-- 标题：宝藏编号 + 尺寸 -->
                                 <span style="margin-right:16px;font-weight:500;">宝藏{{ tid }} <span style="color:#888;font-weight:400;">({{ getTreasureSize(tid)[0] }} x {{ getTreasureSize(tid)[1] }})</span></span>
-                                <!-- 占用格子区域放大显示 -->
+                                <!-- 占用格子区域已移除红色格子显示 -->
                                 <div style="display:inline-block;margin-right:16px;">
-                                    <div v-for="r in getTreasureSize(tid)[0]" :key="'r'+r" style="display:flex;">
-                                        <div v-for="c in getTreasureSize(tid)[1]" :key="'c'+c" style="width:28px;height:28px;background:rgba(255,0,0,0.38);border:1.5px solid #e22;border-radius:4px;margin:1.5px;"></div>
-                                    </div>
                                 </div>
                                 <Checkbox v-model="rotationSettings[tid]" style="margin-right:12px;" :disabled="arrangements.length > 0">旋转</Checkbox>
                                 <Button size="small" type="error" ghost @click="removeTreasure(tid)" style="margin-right:10px;" :disabled="arrangements.length > 0">

@@ -31,6 +31,35 @@
                             x
                             <InputNumber v-model="item.size[1]" :min="1" :max="5" style="width:60px" />
                             </Col>
+                            <Col :span="12">
+                                <div style="display:inline-block;vertical-align:middle;">
+                                    <span style="margin-right:8px;">占用格子：</span>
+                                    <div style="display:inline-block;vertical-align:middle;">
+                                        <div style="position:relative;width:78px;height:78px;display:grid;grid-template-columns:repeat(4,18px);grid-template-rows:repeat(4,18px);gap:1px;background:#eaeaea;padding:2px;border-radius:4px;box-shadow:0 1px 3px #eee;">
+                                            <div v-for="r in 4" :key="'row'+r" style="display:contents;">
+                                                <div v-for="c in 4" :key="'cell'+r+'-'+c" style="position:relative;width:18px;height:18px;">
+                                                    <img :src="tileImg" style="width:18px;height:18px;object-fit:cover;display:block;border-radius:2px;" />
+                                                    <div v-if="r <= item.size[0] && c <= item.size[1]"
+                                                        style="position:absolute;left:0;top:0;width:18px;height:18px;background:rgba(255,0,0,0.38);border-radius:2px;z-index:4;pointer-events:none;"></div>
+                                                </div>
+                                            </div>
+                                            <img :src="treasureImg(item.id)"
+                                                :style="{
+                                                    position: 'absolute',
+                                                    left: '2px',
+                                                    top: '2px',
+                                                    width: (item.size[1]*18 + (item.size[1]-1)*1) + 'px',
+                                                    height: (item.size[0]*18 + (item.size[0]-1)*1) + 'px',
+                                                    objectFit: 'contain',
+                                                    zIndex: 10,
+                                                    pointerEvents: 'none',
+                                                    filter: 'drop-shadow(0 1px 2px #aaa)'
+                                                }"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </Col>
                         </Row>
                     </div>
                     <Modal v-model="showAdvancedModal" title="高级设置 JSON" :footer-hide="true" width="600"
@@ -183,6 +212,7 @@ const LEVELS_KEY = 'buried_bounty_levels_v1'
 
 // 优先从localStorage恢复宝藏设置
 function getInitialTreasures() {
+    const sizeOptions = [[1, 1], [2, 1], [1, 2], [2, 2], [3, 1], [1, 3], [3, 2], [2, 3], [3, 3]]
     try {
         const str = localStorage.getItem(TREASURE_KEY)
         if (str) {
@@ -192,11 +222,9 @@ function getInitialTreasures() {
             }
         }
     } catch (e) { }
-    // 默认23个宝藏
-    const sizeOptions = [[2, 1], [1, 2], [2, 2], [1, 1]]
     return Array.from({ length: 23 }, (_, i) => ({
         id: i + 1,
-        size: sizeOptions[i % sizeOptions.length].slice(),
+        size: sizeOptions[i % sizeOptions.length].slice()
     }))
 }
 

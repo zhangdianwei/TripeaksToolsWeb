@@ -19,44 +19,41 @@
                                         <div style="display:flex;align-items:center;gap:10px;">
                                             <img :src="treasureImg(item.id)" style="width:28px;height:28px;object-fit:contain;border-radius:4px;background:#fff;box-shadow:0 1px 3px #eee;" />
                                             <span style="font-weight:500;">宝藏{{ item.id }}</span>
+                                            <span style="margin-left:8px;">行列：</span>
+                                            <InputNumber v-model="item.size[0]" :min="1" :max="previewCols" style="width:52px;" />
+                                            x
+                                            <InputNumber v-model="item.size[1]" :min="1" :max="previewRows" style="width:52px;" />
                                         </div>
                                     </template>
-                                    <div style="margin-bottom:8px;">
-                                        <span style="margin-right:8px;">大小：</span>
-                                        <InputNumber v-model="item.size[0]" :min="1" :max="previewCols" style="width:60px" />
-                                        x
-                                        <InputNumber v-model="item.size[1]" :min="1" :max="previewRows" style="width:60px" />
-                                    </div>
                                     <div>
                                         <span style="margin-right:8px;">占用格子：</span>
                                         <div style="display:inline-block;vertical-align:middle;">
                                             <div :style="{
                                                 position: 'relative',
-                                                width: (previewCols*18 + (previewCols-1)*1 + 4) + 'px',
-                                                height: (previewRows*18 + (previewRows-1)*1 + 4) + 'px',
+                                                width: (previewCols*32 + (previewCols-1)*3 + 8) + 'px',
+                                                height: (previewRows*32 + (previewRows-1)*3 + 8) + 'px',
                                                 display: 'grid',
-                                                gridTemplateColumns: `repeat(${previewCols},18px)`,
-                                                gridTemplateRows: `repeat(${previewRows},18px)`,
-                                                gap: '1px',
+                                                gridTemplateColumns: `repeat(${previewCols},32px)`,
+                                                gridTemplateRows: `repeat(${previewRows},32px)`,
+                                                gap: '3px',
                                                 background: '#eaeaea',
-                                                padding: '2px',
-                                                borderRadius: '4px',
-                                                boxShadow: '0 1px 3px #eee'
+                                                padding: '4px',
+                                                borderRadius: '6px',
                                             }">
-                                                <div v-for="r in previewRows" :key="'row'+r" style="display:contents;">
-                                                    <div v-for="c in previewCols" :key="'cell'+r+'-'+c" style="position:relative;width:18px;height:18px;">
-                                                        <img :src="tileImg" style="width:18px;height:18px;object-fit:cover;display:block;border-radius:2px;" />
+                                                <div v-for="r in previewRows" :key="'r'+r" style="display:contents;">
+                                                    <div v-for="c in previewCols" :key="'cell'+r+'-'+c" style="position:relative;width:32px;height:32px;">
+                                                        <img :src="tileImg" style="width:32px;height:32px;object-fit:cover;display:block;border-radius:2px;" />
                                                         <div v-if="r <= item.size[0] && c <= item.size[1]"
-                                                            style="position:absolute;left:0;top:0;width:18px;height:18px;background:rgba(255,0,0,0.38);border-radius:2px;z-index:4;pointer-events:none;"></div>
+                                                            style="position:absolute;left:0;top:0;width:32px;height:32px;background:rgba(255,0,0,0.38);border-radius:2px;z-index:4;pointer-events:none;"></div>
                                                     </div>
                                                 </div>
                                                 <img :src="treasureImg(item.id)"
                                                     :style="{
                                                         position: 'absolute',
-                                                        left: '2px',
-                                                        top: '2px',
-                                                        width: (item.size[1]*18 + (item.size[1]-1)*1) + 'px',
-                                                        height: (item.size[0]*18 + (item.size[0]-1)*1) + 'px',
+                                                        left: '4px',
+                                                        top: '4px',
+                                                        width: (item.size[1]*32 + (item.size[1]-1)*3) + 'px',
+                                                        height: (item.size[0]*32 + (item.size[0]-1)*3) + 'px',
                                                         objectFit: 'contain',
                                                         zIndex: 10,
                                                         pointerEvents: 'none',
@@ -126,7 +123,7 @@
                         </div>
                         <!-- 已选宝藏 -->
                         <div v-if="selectedTreasures.length" class="settings-block selected-treasure-list">
-                            <div v-for="tid in selectedTreasures" :key="tid" class="selected-treasure-row">
+                            <div v-for="tid in selectedTreasures" :key="tid" class="selected-treasure-row" style="align-items: flex-start;">
                                 <Tooltip placement="right">
                                     <template #content>
                                         <img :src="treasureImg(tid)"
@@ -135,13 +132,19 @@
                                     <img :src="treasureImg(tid)"
                                         style="width:28px;height:28px;object-fit:contain;vertical-align:middle;border-radius:4px;background:#fff;box-shadow:0 1px 3px #eee;margin-right:8px;" />
                                 </Tooltip>
-                                <span style="margin-right:12px;">宝藏{{ tid }}</span>
+                                <!-- 标题：宝藏编号 + 尺寸 -->
+                                <span style="margin-right:16px;font-weight:500;">宝藏{{ tid }} <span style="color:#888;font-weight:400;">({{ getTreasureSize(tid)[0] }} x {{ getTreasureSize(tid)[1] }})</span></span>
+                                <!-- 占用格子区域放大显示 -->
+                                <div style="display:inline-block;margin-right:16px;">
+                                    <div v-for="r in getTreasureSize(tid)[0]" :key="'r'+r" style="display:flex;">
+                                        <div v-for="c in getTreasureSize(tid)[1]" :key="'c'+c" style="width:28px;height:28px;background:rgba(255,0,0,0.38);border:1.5px solid #e22;border-radius:4px;margin:1.5px;"></div>
+                                    </div>
+                                </div>
                                 <Checkbox v-model="rotationSettings[tid]" style="margin-right:12px;" :disabled="arrangements.length > 0">旋转</Checkbox>
                                 <Button size="small" type="error" ghost @click="removeTreasure(tid)" style="margin-right:10px;" :disabled="arrangements.length > 0">
                                     <Icon type="ios-close" />
                                 </Button>
                                 <span class="treasure-divider" />
-                                <span style="margin-left:auto;color:#888;">尺寸：{{ getTreasureSize(tid)[0] }} x {{ getTreasureSize(tid)[1] }}</span>
                             </div>
                         </div>
                         <!-- 排列组合展示区（无缩略图，可点击选中） -->
@@ -821,7 +824,7 @@ function isCellOccupied(r, c, treasuresArr) {
 
 .selected-treasure-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 6px;
 }
 

@@ -1,6 +1,6 @@
 <template>
     <div class="buried-bounty-editor">
-        <Tabs :animated="false" class="full-tabs">
+        <Tabs :animated="false" class="full-tabs" v-model="activeTab">
             <TabPane label="高级设置" name="advanced">
                 <div class="advanced-settings full-advanced">
                     <div class="advanced-header-row">
@@ -45,60 +45,74 @@
                 </div>
             </TabPane>
             <TabPane label="关卡编辑" name="main">
-                <div class="settings-bar">
-                    <div class="level-settings">
-                        <label>地图大小：</label>
-                        <InputNumber v-model="level.gridN" :min="2" :max="12" style="width:60px" /> x
-                        <InputNumber v-model="level.gridM" :min="2" :max="12" style="width:60px" />
-                    </div>
-                    <div class="treasure-settings">
-                        <label>选择宝藏：</label>
-                        <Select v-model="selectedTreasures" multiple style="min-width:120px;max-width:200px;">
-                            <Option v-for="item in treasures" :key="item.id" :value="item.id">
-                                宝藏{{ item.id }}
-                            </Option>
-                        </Select>
-                        <span v-if="selectedTreasures.length">（共{{ selectedTreasures.length }}个）</span>
-                    </div>
-                    <Button type="primary" @click="generateArrangements">生成</Button>
-                    <Button @click="saveLevel">保存</Button>
-                    <Button @click="showResult">显示结果</Button>
-                </div>
-                <div class="main-content">
-                    <div class="arrangement-list">
-                        <h3>排列组合</h3>
-                        <div v-if="arrangements.length === 0">无</div>
-                        <ul>
-                            <li v-for="(arr, idx) in arrangements" :key="arr.id"
-                                :class="{ selected: idx === selectedArrangementIndex }">
-                                <span @click="selectArrangement(idx)">组合{{ idx + 1 }}</span>
-                                <Button size="small" type="error" @click="deleteArrangement(idx)">删除</Button>
-                            </li>
-                        </ul>
-                    </div>
-                    <div class="map-area">
-                        <div class="map-grid" :style="mapGridStyle">
-                            <div v-for="row in level.gridN" :key="row" class="map-row">
-                                <div v-for="col in level.gridM" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
-                                    <img :src="tileImg" class="tile-bg" />
-                                    <template v-for="(t, tIdx) in currentArrangement.treasures">
-                                        <img v-if="isTreasureOnCell(t, row - 1, col - 1)" :src="treasureImg(t.treasureId)"
-                                            :class="['treasure-img', t.rotated ? 'rotated' : '']" :style="treasureStyle(t)" />
-                                    </template>
+                <Row class="level-editor-row" gutter="24">
+                    <!-- 左侧设置区 -->
+                    <Col :span="9" class="level-settings-panel">
+                        <Card dis-hover class="settings-card">
+                            <div class="settings-block">
+                                <span class="settings-title">地图大小</span>
+                                <InputNumber v-model="level.gridN" :min="2" :max="12" style="width:60px" /> x
+                                <InputNumber v-model="level.gridM" :min="2" :max="12" style="width:60px" />
+                            </div>
+                            <div class="settings-block">
+                                <span class="settings-title">选择宝藏</span>
+                                <Select v-model="selectedTreasures" multiple style="min-width:120px;max-width:220px;">
+                                    <Option v-for="item in treasures" :key="item.id" :value="item.id">
+                                        宝藏{{ item.id }}
+                                    </Option>
+                                </Select>
+                                <span v-if="selectedTreasures.length" style="margin-left:8px;">（共{{ selectedTreasures.length }}个）</span>
+                            </div>
+                            <div class="settings-block">
+                                <span class="settings-title">排列组合</span>
+                                <div v-if="arrangements.length === 0" style="color:#aaa;">无</div>
+                                <div v-else>
+                                    <Button size="small" v-for="(arr, idx) in arrangements" :key="arr.id"
+                                        :type="idx === selectedArrangementIndex ? 'primary' : 'default'"
+                                        style="margin-right:8px;margin-bottom:6px;"
+                                        @click="selectArrangement(idx)">
+                                        组合{{ idx + 1 }}
+                                    </Button>
+                                    <Button size="small" type="error" ghost v-for="(arr, idx) in arrangements" :key="'del'+arr.id"
+                                        style="margin-right:8px;margin-bottom:6px;"
+                                        @click="deleteArrangement(idx)">
+                                        删除
+                                    </Button>
+                                </div>
+                            </div>
+                            <div class="settings-block">
+                                <span class="settings-title">宝藏旋转设置</span>
+                                <div v-if="selectedTreasures.length === 0" style="color:#aaa;">请先选择宝藏</div>
+                                <div v-else>
+                                    <Checkbox v-for="tid in selectedTreasures" :key="tid" v-model="rotationSettings[tid]" style="margin-right:16px;">
+                                        宝藏{{ tid }} 旋转90°
+                                    </Checkbox>
+                                </div>
+                            </div>
+                            <div class="settings-block settings-actions">
+                                <Button type="primary" @click="generateArrangements" style="margin-right:12px;">生成组合</Button>
+                                <Button @click="saveLevel" style="margin-right:12px;">保存关卡</Button>
+                                <Button @click="showResult">显示结果</Button>
+                            </div>
+                        </Card>
+                    </Col>
+                    <!-- 右侧地图显示区 -->
+                    <Col :span="15" class="level-map-panel">
+                        <div class="map-area">
+                            <div class="map-grid" :style="mapGridStyle">
+                                <div v-for="row in level.gridN" :key="row" class="map-row">
+                                    <div v-for="col in level.gridM" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
+                                        <img :src="tileImg" class="tile-bg" />
+                                        <template v-for="(t, tIdx) in currentArrangement.treasures">
+                                            <img v-if="isTreasureOnCell(t, row - 1, col - 1)" :src="treasureImg(t.treasureId)"
+                                                :class="['treasure-img', t.rotated ? 'rotated' : '']" :style="treasureStyle(t)" />
+                                        </template>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="rotation-settings">
-                            <h4>宝藏旋转设置</h4>
-                            <div v-for="tid in selectedTreasures" :key="tid">
-                                <span>宝藏{{ tid }}</span>
-                                <label>
-                                    <Checkbox v-model="rotationSettings[tid]">旋转90°</Checkbox>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                    </Col>
+                </Row>
                 <div v-if="showResultModal" class="result-modal">
                     <h3>全局结果</h3>
                     <textarea readonly :value="JSON.stringify(globalResults, null, 2)"
@@ -113,7 +127,9 @@
 
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
-import { Row, Col, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon } from 'view-ui-plus'
+import { Row, Col, Card, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon } from 'view-ui-plus'
+
+const activeTab = ref('main')
 
 const TREASURE_KEY = 'buried_bounty_treasures_v1'
 
@@ -289,6 +305,40 @@ selectedTreasures.value.forEach(tid => {
     margin-bottom: 10px;
     gap: 10px;
 }
+.level-editor-row {
+    width: 100%;
+    min-height: 560px;
+}
+.level-settings-panel {
+    min-width: 320px;
+    max-width: 420px;
+}
+.level-map-panel {
+    min-width: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.settings-card {
+    padding: 16px 12px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 12px #e8e8ee;
+    margin-bottom: 0;
+}
+.settings-block {
+    margin-bottom: 22px;
+}
+.settings-title {
+    display: inline-block;
+    font-weight: 500;
+    color: #2d8cf0;
+    margin-bottom: 8px;
+    margin-right: 10px;
+}
+.settings-actions {
+    margin-top: 18px;
+}
 .buried-bounty-editor {
     display: flex;
     flex-direction: column;
@@ -321,37 +371,6 @@ selectedTreasures.value.forEach(tid => {
 .advanced-settings {
     min-width: 220px;
     max-width: 420px;
-}
-.settings-bar {
-    display: flex;
-    gap: 24px;
-    align-items: center;
-    background: #f7f7f7;
-    padding: 8px 12px;
-    border-radius: 6px;
-}
-.main-content {
-    display: flex;
-    gap: 24px;
-}
-.arrangement-list {
-    min-width: 140px;
-    background: #fafafa;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    padding: 8px;
-}
-.arrangement-list ul {
-    padding: 0;
-    margin: 0;
-    list-style: none;
-}
-.arrangement-list li {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-    cursor: pointer;
 }
 .arrangement-list li.selected {
     background: #e0f3ff;

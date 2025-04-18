@@ -153,7 +153,7 @@
                                     <template v-for="(t, tIdx) in currentArrangement.treasures" :key="'treasure-' + tIdx">
                                         <img
                                             :src="treasureImg(t.treasureId)"
-                                            :class="['treasure-img', t.rotated ? 'rotated' : '']"
+                                            :class="['treasure-img', t.rotated ? 'rotated-img' : '']"
                                             :style="treasureStyle(t)"
                                         />
                                     </template>
@@ -455,10 +455,12 @@ function treasureStyle(t) {
         position: 'absolute',
         left: `${t.col * 40}px`,
         top: `${t.row * 40}px`,
-        width: `${w * 40}px`,
-        height: `${h * 40}px`,
+        width: `${(t.rotated ? h : w) * 40}px`,
+        height: `${(t.rotated ? w : h) * 40}px`,
         zIndex: 10,
         pointerEvents: 'none',
+        transform: t.rotated ? 'rotate(90deg) translateY(-100%)' : '',
+        transformOrigin: 'top left',
     }
 }
 const mapGridStyle = computed(() => ({
@@ -812,5 +814,14 @@ function clearArrangements() {
     height: 22px;
     background: #ddd;
     margin: 0 10px 0 0;
+}
+.treasure-img {
+    transition: transform 0.2s;
+    object-fit: contain;
+    display: block;
+}
+.rotated-img {
+    /* 旋转图片并保证拉伸方向正确 */
+    /* transform 由 style 绑定动态控制，避免和style冲突 */
 }
 </style>

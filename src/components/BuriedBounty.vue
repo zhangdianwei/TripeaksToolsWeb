@@ -470,88 +470,88 @@ selectedTreasures.value.forEach(tid => {
 
 // 新增排列按钮逻辑：生成一个不与现有arrangements重复的随机排列
 function addRandomArrangement() {
-    // 生成所有宝藏的排列顺序和旋转情况
+    // 前置校验
     const ts = selectedTreasures.value.slice()
-    if (!ts.length) return
-    // 随机顺序
-    for (let i = ts.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        ;[ts[i], ts[j]] = [ts[j], ts[i]]
+    if (!ts.length) {
+        Message.info('请先选择宝藏')
+        return
     }
-    // 随机旋转（若允许）
+    // 获取宝藏属性
     const treasuresList = ts.map(tid => {
         const tr = treasures.find(t => t.id === tid)
         return {
             treasureId: tid,
             size: tr ? tr.size.slice() : [1, 1],
-            rotated: rotationSettings.value[tid] ? Math.random() < 0.5 : false
+            allowRotate: rotationSettings.value[tid] || false
         }
     })
-    // 顺序填充算法
+    // 随机打乱顺序
+    for (let i = treasuresList.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[treasuresList[i], treasuresList[j]] = [treasuresList[j], treasuresList[i]]
+    }
     const gridRows = gridN.value
     const gridCols = gridM.value
-    const arr = []
-    let curRow = 0, curCol = 0
-    for (const t of treasuresList) {
-        const [w, h] = t.rotated ? [t.size[1], t.size[0]] : t.size
-        if (curCol + w > gridCols) {
-            curRow += h
-            curCol = 0
-        }
-        if (curRow + h > gridRows) break
-        arr.push({ treasureId: t.treasureId, row: curRow, col: curCol, rotated: t.rotated, size: t.size })
-        curCol += w
-    }
-    if (!arr.length) {
-        Message.info('无法生成排列，请检查宝藏尺寸和地图大小')
-        return
-    }
-    // 检查是否与现有完全重复
-    const isSame = (a, b) => {
-        if (a.treasures.length !== b.treasures.length) return false
-        for (let i = 0; i < a.treasures.length; i++) {
-            const t1 = a.treasures[i], t2 = b.treasures[i]
-            if (!t1 || !t2) return false
-            if (t1.treasureId !== t2.treasureId || t1.row !== t2.row || t1.col !== t2.col || !!t1.rotated !== !!t2.rotated) return false
-        }
-        return true
-    }
-    if (arrangements.value.some(a => isSame(a, { treasures: arr }))) {
-        // 若重复则递归尝试最多10次
-        let tryCount = 0
-        while (tryCount++ < 10) {
-            // 洗牌和旋转重新生成
-            for (let i = ts.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1))
-                ;[ts[i], ts[j]] = [ts[j], ts[i]]
+    // 检查是否重叠
+    function isOverlap(placed, row, col, w, h) {
+        for (const p of placed) {
+            const [pw, ph] = p.rotated ? [p.size[1], p.size[0]] : p.size
+            if (
+                row + h > gridRows || col + w > gridCols ||
+                row + h <= p.row || row >= p.row + ph ||
+                col + w <= p.col || col >= p.col + pw
+            ) {
+                continue
             }
-            treasuresList.forEach((t, idx) => {
-                t.rotated = rotationSettings.value[t.treasureId] ? Math.random() < 0.5 : false
-            })
-            curRow = 0; curCol = 0
-            const arr2 = []
-            for (const t of treasuresList) {
-                const [w, h] = t.rotated ? [t.size[1], t.size[0]] : t.size
-                if (curCol + w > gridCols) {
-                    curRow += h
-                    curCol = 0
+            return true
+        }
+        return false
+    }
+    // 回溯递归查找一个新解
+    function dfs(placed, idx) {
+        if (idx === treasuresList.length) {
+            // 检查是否重复
+            const isSame = (a, b) => {
+                if (a.treasures.length !== b.treasures.length) return false
+                for (let i = 0; i < a.treasures.length; i++) {
+                    const t1 = a.treasures[i], t2 = b.treasures[i]
+                    if (!t1 || !t2) return false
+                    if (t1.treasureId !== t2.treasureId || t1.row !== t2.row || t1.col !== t2.col || !!t1.rotated !== !!t2.rotated) return false
                 }
-                if (curRow + h > gridRows) break
-                arr2.push({ treasureId: t.treasureId, row: curRow, col: curCol, rotated: t.rotated, size: t.size })
-                curCol += w
+                return true
             }
-            if (!arr2.length) return
-            if (!arrangements.value.some(a => isSame(a, { treasures: arr2 }))) {
-                arrangements.value.push({ id: Date.now() + Math.random(), treasures: arr2 })
+            if (!arrangements.value.some(a => isSame(a, { treasures: placed }))) {
+                arrangements.value.push({ id: Date.now() + Math.random(), treasures: placed })
                 selectedArrangementIndex.value = arrangements.value.length - 1
-                return
+                return true
+            }
+            return false
+        }
+        const t = treasuresList[idx]
+        const rotOptions = t.allowRotate ? [false, true] : [false]
+        // 随机旋转顺序
+        for (const rotated of rotOptions.sort(() => Math.random() - 0.5)) {
+            const [w, h] = rotated ? [t.size[1], t.size[0]] : t.size
+            // 随机遍历所有格子
+            const posArr = []
+            for (let r = 0; r <= gridRows - h; r++) {
+                for (let c = 0; c <= gridCols - w; c++) {
+                    posArr.push([r, c])
+                }
+            }
+            for (const [row, col] of posArr.sort(() => Math.random() - 0.5)) {
+                if (!isOverlap(placed, row, col, w, h)) {
+                    if (dfs([...placed, { treasureId: t.treasureId, row, col, rotated, size: t.size }], idx + 1)) {
+                        return true
+                    }
+                }
             }
         }
-        // 超过尝试次数仍重复则不添加
-        return
+        return false
     }
-    arrangements.value.push({ id: Date.now() + Math.random(), treasures: arr })
-    selectedArrangementIndex.value = arrangements.value.length - 1
+    if (!dfs([], 0)) {
+        Message.info('所有随机结果已用完，无法生成新的排列')
+    }
 }
 
 // 获取并绑定宝藏大小（高级设置中的 treasures）

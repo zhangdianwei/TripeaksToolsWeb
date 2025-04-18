@@ -10,6 +10,12 @@
                         </Button>
                         <label style="font-size:18px;font-weight:500;">高级设置：</label>
                     </div>
+                    <div style="margin-bottom:12px;display:flex;align-items:center;gap:16px;">
+                        <span style="font-weight:500;color:#2d8cf0;">示意图格子行数</span>
+                        <InputNumber v-model="previewRows" :min="1" :max="12" style="width:60px;" />
+                        <span style="font-weight:500;color:#2d8cf0;">列数</span>
+                        <InputNumber v-model="previewCols" :min="1" :max="12" style="width:60px;" />
+                    </div>
                     <div class="treasure-list-scroll">
                         <Row :gutter="8" v-for="item in treasures" :key="item.id"
                             style="margin-bottom:4px;align-items:center;">
@@ -27,17 +33,29 @@
                             宝藏{{ item.id }} 大小：
                             </Col>
                             <Col :span="6">
-                            <InputNumber v-model="item.size[0]" :min="1" :max="5" style="width:60px" />
+                            <InputNumber v-model="item.size[0]" :min="1" :max="previewCols" style="width:60px" />
                             x
-                            <InputNumber v-model="item.size[1]" :min="1" :max="5" style="width:60px" />
+                            <InputNumber v-model="item.size[1]" :min="1" :max="previewRows" style="width:60px" />
                             </Col>
                             <Col :span="12">
                                 <div style="display:inline-block;vertical-align:middle;">
                                     <span style="margin-right:8px;">占用格子：</span>
                                     <div style="display:inline-block;vertical-align:middle;">
-                                        <div style="position:relative;width:78px;height:78px;display:grid;grid-template-columns:repeat(4,18px);grid-template-rows:repeat(4,18px);gap:1px;background:#eaeaea;padding:2px;border-radius:4px;box-shadow:0 1px 3px #eee;">
-                                            <div v-for="r in 4" :key="'row'+r" style="display:contents;">
-                                                <div v-for="c in 4" :key="'cell'+r+'-'+c" style="position:relative;width:18px;height:18px;">
+                                        <div :style="{
+                                            position: 'relative',
+                                            width: (previewCols*18 + (previewCols-1)*1 + 4) + 'px',
+                                            height: (previewRows*18 + (previewRows-1)*1 + 4) + 'px',
+                                            display: 'grid',
+                                            gridTemplateColumns: `repeat(${previewCols},18px)`,
+                                            gridTemplateRows: `repeat(${previewRows},18px)`,
+                                            gap: '1px',
+                                            background: '#eaeaea',
+                                            padding: '2px',
+                                            borderRadius: '4px',
+                                            boxShadow: '0 1px 3px #eee'
+                                        }">
+                                            <div v-for="r in previewRows" :key="'row'+r" style="display:contents;">
+                                                <div v-for="c in previewCols" :key="'cell'+r+'-'+c" style="position:relative;width:18px;height:18px;">
                                                     <img :src="tileImg" style="width:18px;height:18px;object-fit:cover;display:block;border-radius:2px;" />
                                                     <div v-if="r <= item.size[0] && c <= item.size[1]"
                                                         style="position:absolute;left:0;top:0;width:18px;height:18px;background:rgba(255,0,0,0.38);border-radius:2px;z-index:4;pointer-events:none;"></div>
@@ -733,6 +751,17 @@ function clearArrangements() {
     arrangements.value.splice(0, arrangements.value.length)
     selectedArrangementIndex.value = -1
 }
+
+const previewRows = ref(4)
+const previewCols = ref(4)
+
+// 自动修正宝藏尺寸不超过格子
+watch([previewRows, previewCols], ([newRows, newCols]) => {
+    treasures.forEach(item => {
+        if (item.size[0] > newCols) item.size[0] = newCols
+        if (item.size[1] > newRows) item.size[1] = newRows
+    })
+})
 </script>
 
 <style scoped>

@@ -49,24 +49,64 @@
                     <!-- 左侧设置区 -->
                     <Col :span="9" class="level-settings-panel">
                         <Card dis-hover class="settings-card">
+                            <!-- 关卡设置 -->
+                            <div class="settings-block">
+                                <span class="settings-title">关卡总数</span>
+                                <InputNumber v-model="levelCount" :min="1" :max="10" style="width:60px;margin-right:18px;" />
+                                <span class="settings-title">当前关卡</span>
+                                <Select v-model="curLevelIdx" style="width:120px;">
+                                    <Option v-for="option in levelOptions" :key="option.value" :value="option.value">
+                                        {{ option.label }}
+                                    </Option>
+                                </Select>
+                            </div>
+                            <!-- 地图规格 -->
                             <div class="settings-block">
                                 <span class="settings-title">地图大小</span>
-                                <InputNumber v-model="level.gridN" :min="2" :max="12" style="width:60px" /> x
-                                <InputNumber v-model="level.gridM" :min="2" :max="12" style="width:60px" />
+                                <InputNumber v-model="gridN" :min="2" :max="12" style="width:60px;" /> x
+                                <InputNumber v-model="gridM" :min="2" :max="12" style="width:60px;" />
                             </div>
+                            <!-- 宝藏选择 -->
                             <div class="settings-block">
                                 <span class="settings-title">选择宝藏</span>
-                                <Select v-model="selectedTreasures" multiple style="min-width:120px;max-width:220px;">
+                                <Select v-model="selectedTreasures" multiple transfer :dropdown-style="{maxHeight:'500px',overflowY:'auto',zIndex:3001}" style="width:220px;">
                                     <Option v-for="item in treasures" :key="item.id" :value="item.id">
-                                        宝藏{{ item.id }}
+                                        <Tooltip placement="right">
+                                            <template #content>
+                                                <img :src="treasureImg(item.id)" style="width:72px;height:72px;object-fit:contain;box-shadow:0 2px 8px #aaa;background:#fff;border-radius:6px;" />
+                                            </template>
+                                            <img :src="treasureImg(item.id)" style="width:22px;height:22px;object-fit:contain;vertical-align:middle;border-radius:4px;background:#fff;box-shadow:0 1px 2px #eee;" />
+                                        </Tooltip>
+                                        <span style="margin-left:7px;">宝藏{{ item.id }}</span>
                                     </Option>
                                 </Select>
                                 <span v-if="selectedTreasures.length" style="margin-left:8px;">（共{{ selectedTreasures.length }}个）</span>
                             </div>
+                            <!-- 已选宝藏 -->
+                            <div v-if="selectedTreasures.length" class="settings-block selected-treasure-list">
+                                <div v-for="tid in selectedTreasures" :key="tid" class="selected-treasure-row">
+                                    <Tooltip placement="right">
+                                        <template #content>
+                                            <img :src="treasureImg(tid)" style="width:72px;height:72px;object-fit:contain;box-shadow:0 2px 8px #aaa;background:#fff;border-radius:6px;" />
+                                        </template>
+                                        <img :src="treasureImg(tid)" style="width:28px;height:28px;object-fit:contain;vertical-align:middle;border-radius:4px;background:#fff;box-shadow:0 1px 3px #eee;margin-right:8px;" />
+                                    </Tooltip>
+                                    <span style="margin-right:12px;">宝藏{{ tid }}</span>
+                                    <Checkbox v-model="rotationSettings[tid]" style="margin-right:12px;">旋转</Checkbox>
+                                    <Button size="small" type="error" ghost @click="removeTreasure(tid)"><Icon type="ios-close" /></Button>
+                                </div>
+                            </div>
+                            <!-- 操作按钮 -->
+                            <div class="settings-block settings-actions">
+                                <Button type="primary" @click="generateArrangements" style="margin-right:12px;">生成组合</Button>
+                                <Button @click="saveLevel" style="margin-right:12px;">保存关卡</Button>
+                                <Button @click="showResult">显示结果</Button>
+                            </div>
+                            <!-- 排列组合 -->
                             <div class="settings-block">
                                 <span class="settings-title">排列组合</span>
-                                <div v-if="arrangements.length === 0" style="color:#aaa;">无</div>
-                                <div v-else>
+                                <span v-if="arrangements.length === 0" style="color:#aaa;">无</span>
+                                <span v-else>
                                     <Button size="small" v-for="(arr, idx) in arrangements" :key="arr.id"
                                         :type="idx === selectedArrangementIndex ? 'primary' : 'default'"
                                         style="margin-right:8px;margin-bottom:6px;"
@@ -78,21 +118,7 @@
                                         @click="deleteArrangement(idx)">
                                         删除
                                     </Button>
-                                </div>
-                            </div>
-                            <div class="settings-block">
-                                <span class="settings-title">宝藏旋转设置</span>
-                                <div v-if="selectedTreasures.length === 0" style="color:#aaa;">请先选择宝藏</div>
-                                <div v-else>
-                                    <Checkbox v-for="tid in selectedTreasures" :key="tid" v-model="rotationSettings[tid]" style="margin-right:16px;">
-                                        宝藏{{ tid }} 旋转90°
-                                    </Checkbox>
-                                </div>
-                            </div>
-                            <div class="settings-block settings-actions">
-                                <Button type="primary" @click="generateArrangements" style="margin-right:12px;">生成组合</Button>
-                                <Button @click="saveLevel" style="margin-right:12px;">保存关卡</Button>
-                                <Button @click="showResult">显示结果</Button>
+                                </span>
                             </div>
                         </Card>
                     </Col>
@@ -100,8 +126,8 @@
                     <Col :span="15" class="level-map-panel">
                         <div class="map-area">
                             <div class="map-grid" :style="mapGridStyle">
-                                <div v-for="row in level.gridN" :key="row" class="map-row">
-                                    <div v-for="col in level.gridM" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
+                                <div v-for="row in gridN" :key="row" class="map-row">
+                                    <div v-for="col in gridM" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
                                         <img :src="tileImg" class="tile-bg" />
                                         <template v-for="(t, tIdx) in currentArrangement.treasures">
                                             <img v-if="isTreasureOnCell(t, row - 1, col - 1)" :src="treasureImg(t.treasureId)"
@@ -115,7 +141,7 @@
                 </Row>
                 <div v-if="showResultModal" class="result-modal">
                     <h3>全局结果</h3>
-                    <textarea readonly :value="JSON.stringify(globalResults, null, 2)"
+                    <textarea readonly :value="JSON.stringify(levels, null, 2)"
                         style="width:90%;height:300px"></textarea>
                     <Button @click="copyResult">复制到剪贴板</Button>
                     <Button @click="showResultModal = false">关闭</Button>
@@ -156,7 +182,7 @@ const treasures = reactive(getInitialTreasures())
 
 // 自动保存到localStorage
 watch(treasures, (val) => {
-    localStorage.setItem(TREASURE_KEY, JSON.stringify(val.map(t => ({ id: t.id, size: t.size.slice() }))))
+    localStorage.setItem(TREASURE_KEY, JSON.stringify(val.map(t => ({ id: t.id, size: t.size }))))
 }, { deep: true })
 
 const tileImg = 'buried_bounty/tile.png'
@@ -164,52 +190,117 @@ function treasureImg(id) {
     return `buried_bounty/item/item_${id}_1.png`
 }
 
-const level = reactive({ gridN: 6, gridM: 6 })
-const selectedTreasures = ref([1, 2])
-const rotationSettings = reactive({})
-const arrangements = ref([])
-const selectedArrangementIndex = ref(0)
-const globalResults = ref([])
+// ========== 多关卡编辑核心数据结构 ==========
+const levelCount = ref(5)
+const curLevelIdx = ref(0)
+
+function makeEmptyLevel() {
+    return {
+        gridN: 6,
+        gridM: 6,
+        selectedTreasures: [],
+        rotationSettings: {},
+        arrangements: [],
+        selectedArrangementIndex: 0
+    }
+}
+
+const levels = reactive([])
+function ensureLevels() {
+    while (levels.length < levelCount.value) levels.push(makeEmptyLevel())
+    while (levels.length > levelCount.value) levels.pop()
+}
+watch(levelCount, ensureLevels, { immediate: true })
+
+// 切换关卡时，自动填充空关卡
+watch(curLevelIdx, ensureLevels, { immediate: true })
+
+// ========== 编辑区所有表单都绑定到当前关卡 ===========
+const currentLevel = computed(() => levels[curLevelIdx.value] || makeEmptyLevel())
+
+// 宝藏选择的响应式变量，直接代理到当前关卡
+const selectedTreasures = computed({
+    get: () => currentLevel.value.selectedTreasures,
+    set: val => currentLevel.value.selectedTreasures = val
+})
+const rotationSettings = computed({
+    get: () => currentLevel.value.rotationSettings,
+    set: val => currentLevel.value.rotationSettings = val
+})
+const arrangements = computed({
+    get: () => currentLevel.value.arrangements,
+    set: val => currentLevel.value.arrangements = val
+})
+const selectedArrangementIndex = computed({
+    get: () => currentLevel.value.selectedArrangementIndex,
+    set: val => currentLevel.value.selectedArrangementIndex = val
+})
+
+// ========== 关卡规格 NxM 直接绑定到 currentLevel ==========
+const gridN = computed({
+    get: () => currentLevel.value.gridN,
+    set: val => currentLevel.value.gridN = val
+})
+const gridM = computed({
+    get: () => currentLevel.value.gridM,
+    set: val => currentLevel.value.gridM = val
+})
+
+// ========== 保存所有关卡设置的全局结果 =============
 const showResultModal = ref(false)
 
-const showAdvancedModal = ref(false)
-const advancedJson = computed(() => JSON.stringify(treasures.map(t => ({ id: t.id, size: t.size })), null, 2))
-function copyAdvanced() {
-    navigator.clipboard.writeText(advancedJson.value)
+// ========== 生成组合、保存关卡、显示结果等逻辑 ==========
+function generateArrangements() {
+    const arr = []
+    let curRow = 0, curCol = 0
+    for (const tid of selectedTreasures.value) {
+        const rotated = !!rotationSettings.value[tid]
+        const tr = treasures.find(t => t.id === tid)
+        if (!tr) continue
+        const [w, h] = rotated ? [tr.size[1], tr.size[0]] : tr.size
+        if (curCol + w > gridM.value) {
+            curRow += h
+            curCol = 0
+        }
+        if (curRow + h > gridN.value) break
+        arr.push({ treasureId: tid, row: curRow, col: curCol, rotated })
+        curCol += w
+    }
+    arrangements.value.push({ id: Date.now() + Math.random(), treasures: JSON.parse(JSON.stringify(arr)) })
+    selectedArrangementIndex.value = arrangements.value.length - 1
+}
+function selectArrangement(idx) {
+    selectedArrangementIndex.value = idx
+}
+function deleteArrangement(idx) {
+    arrangements.value.splice(idx, 1)
+    if (selectedArrangementIndex.value >= arrangements.value.length) {
+        selectedArrangementIndex.value = arrangements.value.length - 1
+    }
+}
+function removeTreasure(tid) {
+    const idx = selectedTreasures.value.indexOf(tid)
+    if (idx !== -1) {
+        selectedTreasures.value.splice(idx, 1)
+        delete rotationSettings.value[tid]
+    }
+}
+function saveLevel() {
+    // 当前关卡设置已自动保存在 levels[curLevelIdx.value]，可选：弹提示
+    alert('当前关卡已保存')
+}
+function showResult() {
+    showResultModal.value = true
+}
+function copyResult() {
+    navigator.clipboard.writeText(JSON.stringify(levels, null, 2))
     alert('已复制到剪贴板')
 }
 
-const mapGridStyle = computed(() => ({
-    display: 'grid',
-    gridTemplateRows: `repeat(${level.gridN}, 40px)`,
-    gridTemplateColumns: `repeat(${level.gridM}, 40px)`,
-    gap: '2px',
-    background: '#ddd',
-    margin: '0 auto',
-    border: '1px solid #aaa',
-    width: `${level.gridM * 42}px`,
-    height: `${level.gridN * 42}px`,
-    position: 'relative',
-}))
+// ========== UI 关卡选择下拉选项 ===========
+const levelOptions = computed(() => Array.from({ length: levelCount.value }, (_, i) => ({ label: `关卡${i + 1}`, value: i })))
 
-function cellStyle(row, col) {
-    return {
-        width: '40px',
-        height: '40px',
-        position: 'relative',
-        border: '1px solid #bbb',
-        boxSizing: 'border-box',
-        overflow: 'hidden',
-    }
-}
-
-const currentArrangement = computed(() => {
-    if (arrangements.value.length === 0) {
-        return { treasures: [] }
-    }
-    return arrangements.value[selectedArrangementIndex.value] || { treasures: [] }
-})
-
+// ========== 地图渲染相关 ===========
 function isTreasureOnCell(t, row, col) {
     const tr = treasures.find(tt => tt.id === t.treasureId)
     if (!tr) return false
@@ -219,7 +310,6 @@ function isTreasureOnCell(t, row, col) {
         col >= t.col && col < t.col + w
     )
 }
-
 function treasureStyle(t) {
     const tr = treasures.find(tt => tt.id === t.treasureId)
     if (!tr) return {}
@@ -234,255 +324,80 @@ function treasureStyle(t) {
         pointerEvents: 'none',
     }
 }
+const mapGridStyle = computed(() => ({
+    gridTemplateRows: `repeat(${gridN.value}, 40px)`,
+    gridTemplateColumns: `repeat(${gridM.value}, 40px)`,
+    gap: '2px',
+    background: '#ddd',
+    margin: '0 auto',
+    border: '1px solid #aaa',
+    width: `${gridM.value * 42}px`,
+    height: `${gridN.value * 42}px`,
+    position: 'relative',
+}))
+const currentArrangement = computed(() => {
+    if (!arrangements.value.length) return { treasures: [] }
+    return arrangements.value[selectedArrangementIndex.value] || { treasures: [] }
+})
 
-function generateArrangements() {
-    const arr = []
-    let curRow = 0, curCol = 0
-    for (const tid of selectedTreasures.value) {
-        const rotated = !!rotationSettings[tid]
-        const tr = treasures.find(t => t.id === tid)
-        if (!tr) continue
-        const [w, h] = rotated ? [tr.size[1], tr.size[0]] : tr.size
-        if (curCol + w > level.gridM) {
-            curRow += h
-            curCol = 0
-        }
-        if (curRow + h > level.gridN) break
-        arr.push({ treasureId: tid, row: curRow, col: curCol, rotated })
-        curCol += w
-    }
-    arrangements.value.push({ id: Date.now() + Math.random(), treasures: JSON.parse(JSON.stringify(arr)) })
-    selectedArrangementIndex.value = arrangements.value.length - 1
-}
+// ========== 宝藏选择下拉项带缩略图 ===========
+// 可选：如需自定义 Option 渲染，可用 slot 或 render
 
-function selectArrangement(idx) {
-    selectedArrangementIndex.value = idx
-}
-
-function deleteArrangement(idx) {
-    arrangements.value.splice(idx, 1)
-    if (selectedArrangementIndex.value >= arrangements.value.length) {
-        selectedArrangementIndex.value = arrangements.value.length - 1
-    }
-}
-
-function saveLevel() {
-    globalResults.value.push({
-        gridN: level.gridN,
-        gridM: level.gridM,
-        arrangements: JSON.parse(JSON.stringify(arrangements.value)),
-        treasures: selectedTreasures.value.map(tid => {
-            const tr = treasures.find(t => t.id === tid)
-            return {
-                id: tid,
-                size: tr ? tr.size.slice() : [1, 1],
-                rotated: !!rotationSettings[tid],
-            }
-        }),
-    })
-    arrangements.value = []
-    selectedArrangementIndex.value = 0
-}
-
-function showResult() {
-    showResultModal.value = true
-}
-
-function copyResult() {
-    navigator.clipboard.writeText(JSON.stringify(globalResults.value, null, 2))
+// ========== 其余功能保持不变 ===========
+const advancedJson = computed(() => JSON.stringify(treasures.map(t => ({ id: t.id, size: t.size })), null, 2))
+function copyAdvanced() {
+    navigator.clipboard.writeText(advancedJson.value)
     alert('已复制到剪贴板')
 }
 
+const showAdvancedModal = ref(false)
+
+function cellStyle(row, col) {
+    return {
+        width: '40px',
+        height: '40px',
+        position: 'relative',
+        border: '1px solid #bbb',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+    }
+}
+
 selectedTreasures.value.forEach(tid => {
-    if (!(tid in rotationSettings)) rotationSettings[tid] = false
+    if (!(tid in rotationSettings.value)) rotationSettings.value[tid] = false
 })
 </script>
 
 <style scoped>
-.advanced-header-row {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-    gap: 10px;
-}
-.level-editor-row {
-    width: 100%;
-    min-height: 560px;
-}
-.level-settings-panel {
-    min-width: 320px;
-    max-width: 420px;
-}
-.level-map-panel {
-    min-width: 320px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.settings-card {
-    padding: 16px 12px;
-    background: #fff;
-    border-radius: 10px;
-    box-shadow: 0 2px 12px #e8e8ee;
-    margin-bottom: 0;
-}
-.settings-block {
-    margin-bottom: 22px;
-}
 .settings-title {
     display: inline-block;
     font-weight: 500;
     color: #2d8cf0;
-    margin-bottom: 8px;
     margin-right: 10px;
+    white-space: nowrap;
+}
+.level-settings-panel {
+    min-width: 380px;
+    max-width: 520px;
+}
+.settings-card {
+    padding: 16px 18px;
+}
+.settings-block {
+  margin-bottom: 22px;
+}
+.selected-treasure-list {
+  background: #f8f9fb;
+  border-radius: 8px;
+  padding: 8px 10px 6px 10px;
+  box-shadow: 0 1px 4px #f2f2f2;
+}
+.selected-treasure-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
 }
 .settings-actions {
-    margin-top: 18px;
-}
-.buried-bounty-editor {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    font-family: Arial, sans-serif;
-    width: 100vw;
-    height: 100vh;
-    min-height: 0;
-}
-.full-tabs {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-}
-.full-advanced {
-    height: calc(100vh - 90px);
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-}
-.treasure-list-scroll {
-    flex: 1;
-    overflow-y: auto;
-    max-height: 100%;
-    min-height: 0;
-    padding-right: 6px;
-}
-.advanced-settings {
-    min-width: 220px;
-    max-width: 420px;
-}
-.arrangement-list li.selected {
-    background: #e0f3ff;
-}
-.map-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-.map-grid {
-    box-shadow: 0 2px 12px #ddd;
-    margin-bottom: 12px;
-    background: #eee;
-    border-radius: 8px;
-    overflow: hidden;
-}
-.map-row {
-    display: flex;
-}
-.map-cell {
-    position: relative;
-    width: 40px;
-    height: 40px;
-    background: #fff;
-}
-.tile-bg {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    position: absolute;
-    left: 0;
-    top: 0;
-    z-index: 1;
-}
-.treasure-img {
-    transition: transform 0.2s;
-    z-index: 10;
-}
-.treasure-img.rotated {
-    transform: rotate(90deg);
-}
-.rotation-settings {
-    background: #f4f4f4;
-    border-radius: 6px;
-    padding: 8px;
-    margin-top: 8px;
-    min-width: 200px;
-}
-.result-modal {
-    position: fixed;
-    left: 0;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-}
-.result-modal textarea {
-    font-family: monospace;
-    font-size: 14px;
-    margin-bottom: 12px;
-}
-.advanced-modal >>> .ivu-modal {
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.20);
-    background: rgba(255,255,255,0.97);
-    backdrop-filter: blur(2px);
-}
-.advanced-modal-content {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-    padding: 12px 0 0 0;
-}
-.advanced-modal-title {
-    display: flex;
-    align-items: center;
-    font-size: 18px;
-    font-weight: 500;
-    color: #2d8cf0;
-    margin-bottom: 8px;
-}
-.advanced-json-textarea {
-    width: 100%;
-    height: 320px;
-    border-radius: 8px;
-    background: #f8f8fa;
-    font-family: 'Fira Mono', 'Menlo', monospace;
-    font-size: 15px;
-    color: #222;
-    border: 1px solid #e0e0e0;
-    padding: 12px;
-    box-sizing: border-box;
-    resize: none;
-    outline: none;
-    transition: box-shadow 0.2s;
-    box-shadow: 0 2px 8px #f0f0f0;
-}
-.advanced-json-textarea:focus {
-    border: 1.5px solid #2d8cf0;
-    box-shadow: 0 2px 12px #e0eaff;
-}
-.advanced-modal-btns {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-top: 6px;
+  margin-top: 18px;
 }
 </style>

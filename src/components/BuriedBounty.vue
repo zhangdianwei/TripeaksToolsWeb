@@ -158,13 +158,14 @@
                         </Card>
                     </Col>
                 </Row>
-                <div v-if="showResultModal" class="result-modal">
-                    <h3>全局结果</h3>
+                <Modal v-model="showResultModal" title="全局结果" width="700" :footer-hide="true">
                     <textarea readonly :value="JSON.stringify(levels, null, 2)"
-                        style="width:90%;height:300px"></textarea>
-                    <Button @click="copyResult">复制到剪贴板</Button>
-                    <Button @click="showResultModal = false">关闭</Button>
-                </div>
+                        style="width:100%;height:300px;margin-bottom:16px;font-family:monospace;font-size:14px;line-height:1.5;" />
+                    <div style="text-align:right;">
+                        <Button @click="copyResult" type="primary">复制到剪贴板</Button>
+                        <Button @click="showResultModal = false" style="margin-left:8px;">关闭</Button>
+                    </div>
+                </Modal>
             </TabPane>
         </Tabs>
     </div>
@@ -361,12 +362,12 @@ const mapGridStyle = computed(() => ({
     display: 'grid',
     gridTemplateRows: `repeat(${currentLevel.value.gridN}, 40px)`,
     gridTemplateColumns: `repeat(${currentLevel.value.gridM}, 40px)`,
-    gap: '2px',
+    gap: '0', // 取消格子间隙
     background: '#ddd',
     margin: '0 auto',
     border: '1px solid #aaa',
-    width: `${currentLevel.value.gridM * 42}px`,
-    height: `${currentLevel.value.gridN * 42}px`,
+    width: `${currentLevel.value.gridM * 40}px`,
+    height: `${currentLevel.value.gridN * 40}px`,
     position: 'relative',
 }))
 const currentArrangement = computed(() => {
@@ -473,5 +474,12 @@ selectedTreasures.value.forEach(tid => {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.20);
     background: rgba(255, 255, 255, 0.97);
     backdrop-filter: blur(2px);
+}
+
+.tile-bg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
 }
 </style>

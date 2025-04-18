@@ -132,6 +132,7 @@
                                     :class="{ selected: idx === selectedArrangementIndex }"
                                     @click="selectArrangement(idx)">
                                     <span>组合{{ idx + 1 }}（共{{ arr.treasures.length }}个宝藏）</span>
+                                    <Button size="small" style="margin-left:12px;" @click.stop="refreshArrangement(idx)">刷新</Button>
                                     <Button size="small" type="error" ghost @click.stop="deleteArrangement(idx)" style="margin-left:16px;">删除</Button>
                                 </div>
                             </div>
@@ -146,14 +147,16 @@
                                     <div v-for="row in currentLevel.gridM" :key="row" class="map-row">
                                         <div v-for="col in currentLevel.gridN" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
                                             <img :src="tileImg" class="tile-bg" />
-                                            <template v-for="(t, tIdx) in currentArrangement.treasures">
-                                                <img v-if="isTreasureOnCell(t, row - 1, col - 1)"
-                                                    :src="treasureImg(t.treasureId)"
-                                                    :class="['treasure-img', t.rotated ? 'rotated' : '']"
-                                                    :style="treasureStyle(t)" />
-                                            </template>
                                         </div>
                                     </div>
+                                    <!-- 上层宝藏渲染：每个宝藏只渲染一次，且图片覆盖其所占区域 -->
+                                    <template v-for="(t, tIdx) in currentArrangement.treasures" :key="'treasure-' + tIdx">
+                                        <img
+                                            :src="treasureImg(t.treasureId)"
+                                            :class="['treasure-img', t.rotated ? 'rotated' : '']"
+                                            :style="treasureStyle(t)"
+                                        />
+                                    </template>
                                 </div>
                             </div>
                         </Card>
@@ -298,13 +301,13 @@ function generateArrangements() {
             canRotate: !!rotationSettings.value[tid]
         }
     })
-    const gridRows = gridN.value
-    const gridCols = gridM.value
+    const _gridRows = gridN.value
+    const _gridCols = gridM.value
     const maxResults = 50
     const results = []
 
     function canPlace(board, row, col, w, h) {
-        if (row + h > gridRows || col + w > gridCols) return false
+        if (row + h > _gridRows || col + w > _gridCols) return false
         for (let r = row; r < row + h; r++) {
             for (let c = col; c < col + w; c++) {
                 if (board[r][c]) return false
@@ -332,8 +335,8 @@ function generateArrangements() {
         const tryRotations = t.canRotate ? [false, true] : [false]
         for (const rotated of tryRotations) {
             const [w, h] = rotated ? [t.size[1], t.size[0]] : t.size
-            for (let row = 0; row <= gridRows - h; row++) {
-                for (let col = 0; col <= gridCols - w; col++) {
+            for (let row = 0; row <= _gridRows - h; row++) {
+                for (let col = 0; col <= _gridCols - w; col++) {
                     if (canPlace(board, row, col, w, h)) {
                         place(board, row, col, w, h, 1)
                         placed.push({ treasureId: t.treasureId, row, col, rotated })
@@ -347,7 +350,7 @@ function generateArrangements() {
         }
     }
     // 初始化空棋盘
-    const board = Array.from({ length: gridRows }, () => Array(gridCols).fill(0))
+    const board = Array.from({ length: _gridRows }, () => Array(_gridCols).fill(0))
     backtrack(0, board, [])
     // 清空并写入arrangements
     arrangements.value.splice(0, arrangements.value.length)
@@ -385,8 +388,8 @@ const levelOptions = computed(() => Array.from({ length: levelCount.value }, (_,
 
 // ========== 地图渲染相关 ===========
 function isTreasureOnCell(t, row, col) {
+    // 已不再用于图片渲染，仅保留逻辑判断（如需高亮单格可用）
     const tr = treasures.find(tt => tt.id === t.treasureId)
-    // 防御：t.size 可能为 undefined/null，或不是数组
     let w, h
     if (tr) {
         if (t.size && Array.isArray(t.size) && t.size.length === 2) {
@@ -407,14 +410,14 @@ function treasureStyle(t) {
     if (!tr) return {}
     let w, h
     if (t.size && Array.isArray(t.size) && t.size.length === 2) {
-        [w, h] = t.rotated ? [t.size[1], t.size[0]] : t.size
+        [w, h] = t.rotated ? t.size : [t.size[1], t.size[0]]
     } else {
-        [w, h] = t.rotated ? [tr.size[1], tr.size[0]] : tr.size
+        [w, h] = t.rotated ? tr.size :[tr.size[1], tr.size[0]]
     }
     return {
         position: 'absolute',
-        left: 0,
-        top: 0,
+        left: `${t.col * 40}px`,
+        top: `${t.row * 40}px`,
         width: `${w * 40}px`,
         height: `${h * 40}px`,
         zIndex: 10,
@@ -485,6 +488,17 @@ function addRandomArrangement() {
             allowRotate: rotationSettings.value[tid] || false
         }
     })
+    // 检查所有宝藏尺寸是否都能放进地图
+    const _gridRows = gridN.value
+    const _gridCols = gridM.value
+    for (const t of treasuresList) {
+        const sizes = t.allowRotate ? [t.size, [t.size[1], t.size[0]]] : [t.size]
+        const canFit = sizes.some(([w, h]) => (w <= _gridCols && h <= _gridRows))
+        if (!canFit) {
+            Message.info('宝藏尺寸或旋转后超出地图范围，无法生成排列')
+            return
+        }
+    }
     // 随机打乱顺序
     for (let i = treasuresList.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
@@ -542,6 +556,95 @@ function addRandomArrangement() {
             for (const [row, col] of posArr.sort(() => Math.random() - 0.5)) {
                 if (!isOverlap(placed, row, col, w, h)) {
                     if (dfs([...placed, { treasureId: t.treasureId, row, col, rotated, size: t.size }], idx + 1)) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+    if (!dfs([], 0)) {
+        Message.info('所有随机结果已用完，无法生成新的排列')
+    }
+}
+
+// 刷新单个排列
+function refreshArrangement(idx) {
+    // 重新生成一个不重复的新排列，替换当前idx项
+    // 逻辑与addRandomArrangement一致，但不能与其它项重复
+    const ts = selectedTreasures.value.slice()
+    if (!ts.length) {
+        Message.info('请先选择宝藏')
+        return
+    }
+    const treasuresList = ts.map(tid => {
+        const tr = treasures.find(t => t.id === tid)
+        return {
+            treasureId: tid,
+            size: tr ? tr.size.slice() : [1, 1],
+            allowRotate: rotationSettings.value[tid] || false
+        }
+    })
+    // 检查尺寸
+    const _gridRows = gridN.value
+    const _gridCols = gridM.value
+    for (const t of treasuresList) {
+        const sizes = t.allowRotate ? [t.size, [t.size[1], t.size[0]]] : [t.size]
+        const canFit = sizes.some(([w, h]) => (w <= _gridCols && h <= _gridRows))
+        if (!canFit) {
+            Message.info('宝藏尺寸或旋转后超出地图范围，无法生成排列')
+            return
+        }
+    }
+    // 回溯递归生成新解
+    const gridRows = gridN.value
+    const gridCols = gridM.value
+    function isOverlap(placed, row, col, w, h) {
+        for (const p of placed) {
+            const [pw, ph] = p.rotated ? [p.size[1], p.size[0]] : p.size
+            if (
+                row + h > gridRows || col + w > gridCols ||
+                row + h <= p.row || row >= p.row + ph ||
+                col + w <= p.col || col >= p.col + pw
+            ) {
+                continue
+            }
+            return true
+        }
+        return false
+    }
+    function isSame(a, b) {
+        if (a.treasures.length !== b.treasures.length) return false
+        for (let i = 0; i < a.treasures.length; i++) {
+            const t1 = a.treasures[i], t2 = b.treasures[i]
+            if (!t1 || !t2) return false
+            if (t1.treasureId !== t2.treasureId || t1.row !== t2.row || t1.col !== t2.col || !!t1.rotated !== !!t2.rotated) return false
+        }
+        return true
+    }
+    function dfs(placed, idxTry) {
+        if (idxTry === treasuresList.length) {
+            // 不与其它项重复即可
+            if (!arrangements.value.some((a, i) => i!==idx && isSame(a, { treasures: placed }))) {
+                arrangements.value[idx] = { id: Date.now() + Math.random(), treasures: placed }
+                selectedArrangementIndex.value = idx
+                return true
+            }
+            return false
+        }
+        const t = treasuresList[idxTry]
+        const rotOptions = t.allowRotate ? [false, true] : [false]
+        for (const rotated of rotOptions.sort(() => Math.random() - 0.5)) {
+            const [w, h] = rotated ? [t.size[1], t.size[0]] : t.size
+            const posArr = []
+            for (let r = 0; r <= gridRows - h; r++) {
+                for (let c = 0; c <= gridCols - w; c++) {
+                    posArr.push([r, c])
+                }
+            }
+            for (const [row, col] of posArr.sort(() => Math.random() - 0.5)) {
+                if (!isOverlap(placed, row, col, w, h)) {
+                    if (dfs([...placed, { treasureId: t.treasureId, row, col, rotated, size: t.size }], idxTry + 1)) {
                         return true
                     }
                 }

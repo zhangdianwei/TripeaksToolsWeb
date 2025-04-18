@@ -71,8 +71,8 @@
                         <!-- 地图规格 -->
                         <div class="settings-block">
                             <span class="settings-title">地图大小</span>
-                            <InputNumber v-model="gridN" :min="2" :max="12" style="width:60px;" /> x
-                            <InputNumber v-model="gridM" :min="2" :max="12" style="width:60px;" />
+                            <InputNumber v-model="currentLevel.gridN" :min="2" :max="12" style="width:60px;" /> x
+                            <InputNumber v-model="currentLevel.gridM" :min="2" :max="12" style="width:60px;" />
                         </div>
                         <!-- 宝藏选择 -->
                         <div class="settings-block">
@@ -116,7 +116,6 @@
                         <div class="settings-block settings-actions">
                             <Button type="primary" @click="generateArrangements"
                                 style="margin-right:12px;">生成组合</Button>
-                            <Button @click="saveLevel" style="margin-right:12px;">保存关卡</Button>
                             <Button @click="showResult">显示结果</Button>
                         </div>
                         <!-- 排列组合 -->
@@ -138,24 +137,25 @@
                         </div>
                     </Card>
                     </Col>
-                    <!-- 右侧地图显示区 -->
+                    <!-- 右侧地图显示区（新版 iView 风格） -->
                     <Col :span="15" class="level-map-panel">
-                    <div class="map-area">
-                        <div class="map-grid" :style="mapGridStyle">
-                            <div v-for="row in gridN" :key="row" class="map-row">
-                                <div v-for="col in gridM" :key="col" class="map-cell"
-                                    :style="cellStyle(row - 1, col - 1)">
-                                    <img :src="tileImg" class="tile-bg" />
-                                    <template v-for="(t, tIdx) in currentArrangement.treasures">
-                                        <img v-if="isTreasureOnCell(t, row - 1, col - 1)"
-                                            :src="treasureImg(t.treasureId)"
-                                            :class="['treasure-img', t.rotated ? 'rotated' : '']"
-                                            :style="treasureStyle(t)" />
-                                    </template>
+                        <Card dis-hover class="settings-card" title="关卡布局预览" style="margin-bottom:16px;">
+                            <div class="map-area">
+                                <div class="map-grid" :style="mapGridStyle">
+                                    <div v-for="row in currentLevel.gridM" :key="row" class="map-row">
+                                        <div v-for="col in currentLevel.gridN" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
+                                            <img :src="tileImg" class="tile-bg" />
+                                            <template v-for="(t, tIdx) in currentArrangement.treasures">
+                                                <img v-if="isTreasureOnCell(t, row - 1, col - 1)"
+                                                    :src="treasureImg(t.treasureId)"
+                                                    :class="['treasure-img', t.rotated ? 'rotated' : '']"
+                                                    :style="treasureStyle(t)" />
+                                            </template>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
+                        </Card>
                     </Col>
                 </Row>
                 <div v-if="showResultModal" class="result-modal">
@@ -172,11 +172,12 @@
 
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
-import { Row, Col, Card, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon, Message } from 'view-ui-plus'
+import { Row, Col, Card, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon, Message, List, ListItem } from 'view-ui-plus'
 
 const activeTab = ref('main')
 
 const TREASURE_KEY = 'buried_bounty_treasures_v1'
+const LEVELS_KEY = 'buried_bounty_levels_v1'
 
 // 优先从localStorage恢复宝藏设置
 function getInitialTreasures() {
@@ -204,6 +205,24 @@ watch(treasures, (val) => {
     localStorage.setItem(TREASURE_KEY, JSON.stringify(val.map(t => ({ id: t.id, size: t.size }))))
 }, { deep: true })
 
+function loadLevels() {
+    try {
+        const str = localStorage.getItem(LEVELS_KEY)
+        if (str) {
+            const arr = JSON.parse(str)
+            if (Array.isArray(arr)) return arr
+        }
+    } catch (e) {}
+    return []
+}
+
+const levels = reactive(loadLevels())
+
+// 自动保存到localStorage
+watch(levels, (val) => {
+    localStorage.setItem(LEVELS_KEY, JSON.stringify(val))
+}, { deep: true })
+
 const tileImg = 'buried_bounty/tile.png'
 function treasureImg(id) {
     return `buried_bounty/item/item_${id}_1.png`
@@ -224,7 +243,6 @@ function makeEmptyLevel() {
     }
 }
 
-const levels = reactive([])
 function ensureLevels() {
     while (levels.length < levelCount.value) levels.push(makeEmptyLevel())
     while (levels.length > levelCount.value) levels.pop()
@@ -236,7 +254,7 @@ watch(curLevelIdx, ensureLevels, { immediate: true })
 
 // ========== 编辑区所有表单都绑定到当前关卡 ===========
 const currentLevel = computed(() => levels[curLevelIdx.value] || makeEmptyLevel())
-
+window.currentLevel = currentLevel;
 // 宝藏选择的响应式变量，直接代理到当前关卡
 const selectedTreasures = computed({
     get: () => currentLevel.value.selectedTreasures,
@@ -304,10 +322,6 @@ function removeTreasure(tid) {
         delete rotationSettings.value[tid]
     }
 }
-function saveLevel() {
-    // 当前关卡设置已自动保存在 levels[curLevelIdx.value]，可选：弹提示
-    alert('当前关卡已保存')
-}
 function showResult() {
     showResultModal.value = true
 }
@@ -344,14 +358,15 @@ function treasureStyle(t) {
     }
 }
 const mapGridStyle = computed(() => ({
-    gridTemplateRows: `repeat(${gridN.value}, 40px)`,
-    gridTemplateColumns: `repeat(${gridM.value}, 40px)`,
+    display: 'grid',
+    gridTemplateRows: `repeat(${currentLevel.value.gridN}, 40px)`,
+    gridTemplateColumns: `repeat(${currentLevel.value.gridM}, 40px)`,
     gap: '2px',
     background: '#ddd',
     margin: '0 auto',
     border: '1px solid #aaa',
-    width: `${gridM.value * 42}px`,
-    height: `${gridN.value * 42}px`,
+    width: `${currentLevel.value.gridM * 42}px`,
+    height: `${currentLevel.value.gridN * 42}px`,
     position: 'relative',
 }))
 const currentArrangement = computed(() => {

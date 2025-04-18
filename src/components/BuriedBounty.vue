@@ -85,9 +85,6 @@
                     <!-- 左侧设置区 -->
                     <Col :span="9" class="level-settings-panel">
                     <Card dis-hover class="settings-card">
-                        <!-- 操作按钮 -->
-                        <div class="settings-block settings-actions" style="display:flex;flex-direction:row;gap:8px;align-items:center;margin-bottom:8px;">
-                        </div>
                         <!-- 关卡设置 -->
                         <div class="settings-block">
                             <span class="settings-title">关卡总数</span>
@@ -147,6 +144,7 @@
                             </div>
                         </div>
                         <!-- 排列组合展示区（无缩略图，可点击选中） -->
+                        <Divider style="margin:16px 0;" />
                         <div class="settings-block">
                             <span class="settings-title">排列组合</span>
                             <Button size="small" icon="md-add" style="margin-left:10px;vertical-align:middle;" @click="addRandomArrangement">新增排列</Button>
@@ -224,7 +222,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
-import { Row, Col, Card, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon, Message, List, ListItem } from 'view-ui-plus'
+import { Row, Col, Card, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon, Message, List, ListItem, Divider } from 'view-ui-plus'
 
 const activeTab = ref('advanced')
 

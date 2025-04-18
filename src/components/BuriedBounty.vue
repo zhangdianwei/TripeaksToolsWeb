@@ -107,7 +107,8 @@
                         <div class="settings-block">
                             <span class="settings-title">选择宝藏</span>
                             <Select v-model="selectedTreasures" multiple transfer
-                                :dropdown-style="{ maxHeight: '500px', overflowY: 'auto', zIndex: 3001 }" style="width:220px;">
+                                :dropdown-style="{ maxHeight: '500px', overflowY: 'auto', zIndex: 3001 }"
+                                style="width:220px;">
                                 <Option v-for="item in treasures" :key="item.id" :value="item.id">
                                     <Tooltip placement="right">
                                         <template #content>
@@ -292,46 +293,30 @@ window.currentLevel = currentLevel;
 const selectedTreasures = computed({
     get: () => currentLevel.value.selectedTreasures,
     set: val => {
-        if (!isInitializing && currentLevel.value.arrangements && currentLevel.value.arrangements.length) {
-            Message.info('当前关卡已有排列组合，无法修改宝藏设置！')
-            return
-        }
         currentLevel.value.selectedTreasures = val
     }
 })
 const rotationSettings = computed({
     get: () => currentLevel.value.rotationSettings,
     set: val => {
-        if (!isInitializing && currentLevel.value.arrangements && currentLevel.value.arrangements.length) {
-            Message.info('当前关卡已有排列组合，无法修改旋转设置！')
-            return
-        }
         currentLevel.value.rotationSettings = val
     }
-})
-const arrangements = computed({
-    get: () => currentLevel.value.arrangements,
-    set: val => currentLevel.value.arrangements = val
 })
 const gridN = computed({
     get: () => currentLevel.value.gridN,
     set: val => {
-        if (!isInitializing && currentLevel.value.arrangements && currentLevel.value.arrangements.length) {
-            Message.info('当前关卡已有排列组合，无法修改地图大小！')
-            return
-        }
         currentLevel.value.gridN = val
     }
 })
 const gridM = computed({
     get: () => currentLevel.value.gridM,
     set: val => {
-        if (!isInitializing && currentLevel.value.arrangements && currentLevel.value.arrangements.length) {
-            Message.info('当前关卡已有排列组合，无法修改地图大小！')
-            return
-        }
         currentLevel.value.gridM = val
     }
+})
+const arrangements = computed({
+    get: () => currentLevel.value.arrangements,
+    set: val => currentLevel.value.arrangements = val
 })
 const selectedArrangementIndex = computed({
     get: () => currentLevel.value.selectedArrangementIndex,
@@ -793,7 +778,6 @@ function copyTreasuresResult() {
 }
 
 function isCellOccupied(r, c, treasuresArr) {
-    console.log(r, c)
     for (const t of treasuresArr) {
         if (typeof t.row !== 'number' || typeof t.col !== 'number') continue
         let h = t.size[0], w = t.size[1]

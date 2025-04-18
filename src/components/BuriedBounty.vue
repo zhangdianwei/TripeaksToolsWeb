@@ -100,15 +100,16 @@
                         <!-- 地图规格 -->
                         <div class="settings-block">
                             <span class="settings-title">地图大小</span>
-                            <InputNumber v-model="gridN" :min="2" :max="12" style="width:60px;" /> x
-                            <InputNumber v-model="gridM" :min="2" :max="12" style="width:60px;" />
+                            <InputNumber v-model="gridN" :min="2" :max="12" style="width:60px;" :disabled="arrangements.length > 0" /> x
+                            <InputNumber v-model="gridM" :min="2" :max="12" style="width:60px;" :disabled="arrangements.length > 0" />
                         </div>
                         <!-- 宝藏选择 -->
                         <div class="settings-block">
                             <span class="settings-title">选择宝藏</span>
                             <Select v-model="selectedTreasures" multiple transfer
                                 :dropdown-style="{ maxHeight: '500px', overflowY: 'auto', zIndex: 3001 }"
-                                style="width:220px;">
+                                style="width:220px;"
+                                :disabled="arrangements.length > 0">
                                 <Option v-for="item in treasures" :key="item.id" :value="item.id">
                                     <Tooltip placement="right">
                                         <template #content>
@@ -121,8 +122,7 @@
                                     <span style="margin-left:7px;">宝藏{{ item.id }}</span>
                                 </Option>
                             </Select>
-                            <span v-if="selectedTreasures.length" style="margin-left:8px;">（共{{ selectedTreasures.length
-                                }}个）</span>
+                            <span v-if="selectedTreasures.length" style="margin-left:8px;">（共{{ selectedTreasures.length }}个）</span>
                         </div>
                         <!-- 已选宝藏 -->
                         <div v-if="selectedTreasures.length" class="settings-block selected-treasure-list">
@@ -136,8 +136,8 @@
                                         style="width:28px;height:28px;object-fit:contain;vertical-align:middle;border-radius:4px;background:#fff;box-shadow:0 1px 3px #eee;margin-right:8px;" />
                                 </Tooltip>
                                 <span style="margin-right:12px;">宝藏{{ tid }}</span>
-                                <Checkbox v-model="rotationSettings[tid]" style="margin-right:12px;">旋转</Checkbox>
-                                <Button size="small" type="error" ghost @click="removeTreasure(tid)" style="margin-right:10px;">
+                                <Checkbox v-model="rotationSettings[tid]" style="margin-right:12px;" :disabled="arrangements.length > 0">旋转</Checkbox>
+                                <Button size="small" type="error" ghost @click="removeTreasure(tid)" style="margin-right:10px;" :disabled="arrangements.length > 0">
                                     <Icon type="ios-close" />
                                 </Button>
                                 <span class="treasure-divider" />

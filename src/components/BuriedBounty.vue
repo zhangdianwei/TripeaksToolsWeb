@@ -1,14 +1,9 @@
 <template>
     <div class="buried-bounty-editor">
         <Tabs :animated="false" class="full-tabs" v-model="activeTab">
-            <TabPane label="高级设置" name="advanced">
+            <TabPane label="宝藏设置" name="advanced">
                 <div class="advanced-settings full-advanced">
                     <div class="advanced-header-row">
-                        <Button type="primary" size="large" ghost style="margin-right:18px;"
-                            @click="showAdvancedModal = true">
-                            <Icon type="ios-eye" style="margin-right:6px;" />显示高级设置
-                        </Button>
-                        <label style="font-size:18px;font-weight:500;">高级设置：</label>
                     </div>
                     <div style="margin-bottom:12px;display:flex;align-items:center;gap:16px;">
                         <span style="font-weight:500;color:#2d8cf0;">示意图格子行数</span>
@@ -80,32 +75,23 @@
                             </Col>
                         </Row>
                     </div>
-                    <Modal v-model="showAdvancedModal" title="高级设置 JSON" :footer-hide="true" width="600"
-                        class="advanced-modal">
-                        <div class="advanced-modal-content">
-                            <div class="advanced-modal-title">
-                                <Icon type="ios-settings" style="color:#2d8cf0;font-size:22px;margin-right:8px;" />
-                                <span>高级设置 JSON</span>
-                            </div>
-                            <Input type="textarea" readonly v-model="advancedJson" autosize
-                                style="width:100%;min-height:320px;max-height:480px;font-family:'Fira Mono','Menlo',monospace;font-size:15px;color:#222;border-radius:8px;background:#f8f8fa;padding:16px 12px;line-height:1.7;box-shadow:0 2px 8px #e5e5e5;resize:vertical;overflow:auto;white-space:pre;"
-                                :spellcheck="false" />
-                            <div class="advanced-modal-btns">
-                                <Button type="primary" @click="copyAdvanced">复制到剪贴板</Button>
-                                <Button @click="showAdvancedModal = false">关闭</Button>
-                            </div>
+                    <Modal v-model="showAdvancedModal" title="宝藏设置结果" width="700" :footer-hide="true">
+                        <textarea readonly :value="JSON.stringify(treasures, null, 2)"
+                            style="width:100%;height:300px;margin-bottom:16px;font-family:monospace;font-size:14px;line-height:1.5;" />
+                        <div style="text-align:right;">
+                            <Button @click="copyTreasuresResult" type="primary">复制到剪贴板</Button>
+                            <Button @click="showAdvancedModal = false" style="margin-left:8px;">关闭</Button>
                         </div>
                     </Modal>
                 </div>
             </TabPane>
-            <TabPane label="关卡编辑" name="main">
+            <TabPane label="关卡设置" name="stage">
                 <Row class="level-editor-row" :gutter="24">
                     <!-- 左侧设置区 -->
                     <Col :span="9" class="level-settings-panel">
                     <Card dis-hover class="settings-card">
                         <!-- 操作按钮 -->
                         <div class="settings-block settings-actions" style="display:flex;flex-direction:row;gap:8px;align-items:center;margin-bottom:8px;">
-                            <Button @click="showResult">显示结果</Button>
                         </div>
                         <!-- 关卡设置 -->
                         <div class="settings-block">
@@ -206,7 +192,29 @@
                         </Card>
                     </Col>
                 </Row>
-                <Modal v-model="showResultModal" title="全局结果" width="700" :footer-hide="true">
+            </TabPane>
+            <TabPane label="显示结果" name="result">
+                <div style="padding:24px 0;display:flex;flex-direction:column;gap:24px;">
+                    <div style="display:flex;align-items:center;gap:16px;">
+                        <span style="font-weight:500;width:96px;">宝藏设置：</span>
+                        <Button type="primary" ghost @click="showAdvancedModal = true">
+                            <Icon type="ios-eye" style="margin-right:6px;" />显示结果
+                        </Button>
+                        <Button type="primary" ghost @click="downloadTreasures">
+                            <Icon type="ios-download" style="margin-right:6px;" />下载结果
+                        </Button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:16px;">
+                        <span style="font-weight:500;width:96px;">关卡设置：</span>
+                        <Button type="primary" ghost @click="showResultModal = true">
+                            <Icon type="ios-eye" style="margin-right:6px;" />显示结果
+                        </Button>
+                        <Button type="primary" ghost @click="downloadLevels">
+                            <Icon type="ios-download" style="margin-right:6px;" />下载结果
+                        </Button>
+                    </div>
+                </div>
+                <Modal v-model="showResultModal" title="关卡设置结果" width="700" :footer-hide="true">
                     <textarea readonly :value="JSON.stringify(levels, null, 2)"
                         style="width:100%;height:300px;margin-bottom:16px;font-family:monospace;font-size:14px;line-height:1.5;" />
                     <div style="text-align:right;">
@@ -223,7 +231,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { Row, Col, Card, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon, Message, List, ListItem } from 'view-ui-plus'
 
-const activeTab = ref('main')
+const activeTab = ref('advanced')
 
 const TREASURE_KEY = 'buried_bounty_treasures_v1'
 const LEVELS_KEY = 'buried_bounty_levels_v1'
@@ -762,6 +770,33 @@ watch([previewRows, previewCols], ([newRows, newCols]) => {
         if (item.size[1] > newRows) item.size[1] = newRows
     })
 })
+
+function downloadTreasures() {
+    const data = JSON.stringify(treasures, null, 2)
+    const blob = new Blob([data], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'treasures.json'
+    a.click()
+    URL.revokeObjectURL(url)
+}
+
+function downloadLevels() {
+    const data = JSON.stringify(levels, null, 2)
+    const blob = new Blob([data], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'levels.json'
+    a.click()
+    URL.revokeObjectURL(url)
+}
+
+function copyTreasuresResult() {
+    navigator.clipboard.writeText(JSON.stringify(treasures, null, 2))
+    Message.success('宝藏设置结果已复制到剪贴板！')
+}
 </script>
 
 <style scoped>

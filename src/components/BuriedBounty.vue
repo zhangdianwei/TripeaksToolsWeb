@@ -71,8 +71,8 @@
                         <!-- 地图规格 -->
                         <div class="settings-block">
                             <span class="settings-title">地图大小</span>
-                            <InputNumber v-model="currentLevel.gridN" :min="2" :max="12" style="width:60px;" /> x
-                            <InputNumber v-model="currentLevel.gridM" :min="2" :max="12" style="width:60px;" />
+                            <InputNumber v-model="gridN" :min="2" :max="12" style="width:60px;" /> x
+                            <InputNumber v-model="gridM" :min="2" :max="12" style="width:60px;" />
                         </div>
                         <!-- 宝藏选择 -->
                         <div class="settings-block">
@@ -237,6 +237,70 @@ function treasureImg(id) {
 const levelCount = ref(5)
 const curLevelIdx = ref(0)
 
+// 初始化标记，防止启动/自动填充时触发限制提示
+let isInitializing = true
+
+// ========== 编辑区所有表单都绑定到当前关卡 ===========
+const currentLevel = computed(() => levels[curLevelIdx.value] || makeEmptyLevel())
+window.currentLevel = currentLevel;
+// 宝藏选择的响应式变量，直接代理到当前关卡
+const selectedTreasures = computed({
+    get: () => currentLevel.value.selectedTreasures,
+    set: val => {
+        if (!isInitializing && currentLevel.value.arrangements && currentLevel.value.arrangements.length) {
+            Message.info('当前关卡已有排列组合，无法修改宝藏设置！')
+            return
+        }
+        currentLevel.value.selectedTreasures = val
+    }
+})
+const rotationSettings = computed({
+    get: () => currentLevel.value.rotationSettings,
+    set: val => {
+        if (!isInitializing && currentLevel.value.arrangements && currentLevel.value.arrangements.length) {
+            Message.info('当前关卡已有排列组合，无法修改旋转设置！')
+            return
+        }
+        currentLevel.value.rotationSettings = val
+    }
+})
+const arrangements = computed({
+    get: () => currentLevel.value.arrangements,
+    set: val => currentLevel.value.arrangements = val
+})
+const gridN = computed({
+    get: () => currentLevel.value.gridN,
+    set: val => {
+        if (!isInitializing && currentLevel.value.arrangements && currentLevel.value.arrangements.length) {
+            Message.info('当前关卡已有排列组合，无法修改地图大小！')
+            return
+        }
+        currentLevel.value.gridN = val
+    }
+})
+const gridM = computed({
+    get: () => currentLevel.value.gridM,
+    set: val => {
+        if (!isInitializing && currentLevel.value.arrangements && currentLevel.value.arrangements.length) {
+            Message.info('当前关卡已有排列组合，无法修改地图大小！')
+            return
+        }
+        currentLevel.value.gridM = val
+    }
+})
+const selectedArrangementIndex = computed({
+    get: () => currentLevel.value.selectedArrangementIndex,
+    set: val => currentLevel.value.selectedArrangementIndex = val
+})
+
+// 关卡/宝藏等初始化流程结束后，关闭初始化标记
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => { isInitializing = false }, 0)
+})
+watch([levels, curLevelIdx], () => {
+    setTimeout(() => { isInitializing = false }, 0)
+}, { immediate: true, deep: true })
+
 function makeEmptyLevel() {
     return {
         gridN: 6,
@@ -258,35 +322,8 @@ watch(levelCount, ensureLevels, { immediate: true })
 watch(curLevelIdx, ensureLevels, { immediate: true })
 
 // ========== 编辑区所有表单都绑定到当前关卡 ===========
-const currentLevel = computed(() => levels[curLevelIdx.value] || makeEmptyLevel())
-window.currentLevel = currentLevel;
 // 宝藏选择的响应式变量，直接代理到当前关卡
-const selectedTreasures = computed({
-    get: () => currentLevel.value.selectedTreasures,
-    set: val => currentLevel.value.selectedTreasures = val
-})
-const rotationSettings = computed({
-    get: () => currentLevel.value.rotationSettings,
-    set: val => currentLevel.value.rotationSettings = val
-})
-const arrangements = computed({
-    get: () => currentLevel.value.arrangements,
-    set: val => currentLevel.value.arrangements = val
-})
-const selectedArrangementIndex = computed({
-    get: () => currentLevel.value.selectedArrangementIndex,
-    set: val => currentLevel.value.selectedArrangementIndex = val
-})
-
-// ========== 关卡规格 NxM 直接绑定到 currentLevel ==========
-const gridN = computed({
-    get: () => currentLevel.value.gridN,
-    set: val => currentLevel.value.gridN = val
-})
-const gridM = computed({
-    get: () => currentLevel.value.gridM,
-    set: val => currentLevel.value.gridM = val
-})
+// ...
 
 // ========== 保存所有关卡设置的全局结果 =============
 const showResultModal = ref(false)
@@ -334,7 +371,7 @@ function generateArrangements() {
         const t = treasuresList[idx]
         const tryRotations = t.canRotate ? [false, true] : [false]
         for (const rotated of tryRotations) {
-            const [w, h] = rotated ? [t.size[1], t.size[0]] : t.size
+            const [w, h] = rotated ? t.size : [t.size[1], t.size[0]]
             for (let row = 0; row <= _gridRows - h; row++) {
                 for (let col = 0; col <= _gridCols - w; col++) {
                     if (canPlace(board, row, col, w, h)) {
@@ -393,9 +430,9 @@ function isTreasureOnCell(t, row, col) {
     let w, h
     if (tr) {
         if (t.size && Array.isArray(t.size) && t.size.length === 2) {
-            [w, h] = t.rotated ? [t.size[1], t.size[0]] : t.size
+            [w, h] = t.rotated ? t.size : [t.size[1], t.size[0]]
         } else {
-            [w, h] = t.rotated ? [tr.size[1], tr.size[0]] : tr.size
+            [w, h] = t.rotated ? tr.size : [tr.size[1], tr.size[0]]
         }
     } else {
         return false
@@ -412,7 +449,7 @@ function treasureStyle(t) {
     if (t.size && Array.isArray(t.size) && t.size.length === 2) {
         [w, h] = t.rotated ? t.size : [t.size[1], t.size[0]]
     } else {
-        [w, h] = t.rotated ? tr.size :[tr.size[1], tr.size[0]]
+        [w, h] = t.rotated ? tr.size : [tr.size[1], tr.size[0]]
     }
     return {
         position: 'absolute',
@@ -545,7 +582,7 @@ function addRandomArrangement() {
         const rotOptions = t.allowRotate ? [false, true] : [false]
         // 随机旋转顺序
         for (const rotated of rotOptions.sort(() => Math.random() - 0.5)) {
-            const [w, h] = rotated ? [t.size[1], t.size[0]] : t.size
+            const [w, h] = rotated ? t.size : [t.size[1], t.size[0]]
             // 随机遍历所有格子
             const posArr = []
             for (let r = 0; r <= gridRows - h; r++) {
@@ -635,7 +672,7 @@ function refreshArrangement(idx) {
         const t = treasuresList[idxTry]
         const rotOptions = t.allowRotate ? [false, true] : [false]
         for (const rotated of rotOptions.sort(() => Math.random() - 0.5)) {
-            const [w, h] = rotated ? [t.size[1], t.size[0]] : t.size
+            const [w, h] = rotated ? t.size : [t.size[1], t.size[0]]
             const posArr = []
             for (let r = 0; r <= gridRows - h; r++) {
                 for (let c = 0; c <= gridCols - w; c++) {

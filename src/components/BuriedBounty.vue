@@ -170,6 +170,7 @@
                                     <div v-for="row in currentLevel.gridM" :key="row" class="map-row">
                                         <div v-for="col in currentLevel.gridN" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
                                             <img :src="tileImg" class="tile-bg" />
+                                            <div v-if="isCellOccupied(col-1, row-1, currentArrangement.treasures)" style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,0,0,0.38);border-radius:4px;z-index:4;pointer-events:none;"></div>
                                         </div>
                                     </div>
                                     <!-- 上层宝藏渲染：每个宝藏只渲染一次，且图片覆盖其所占区域 -->
@@ -789,6 +790,19 @@ function downloadLevels() {
 function copyTreasuresResult() {
     navigator.clipboard.writeText(JSON.stringify(treasures, null, 2))
     Message.success('宝藏设置结果已复制到剪贴板！')
+}
+
+function isCellOccupied(r, c, treasuresArr) {
+    console.log(r, c)
+    for (const t of treasuresArr) {
+        if (typeof t.row !== 'number' || typeof t.col !== 'number') continue
+        let h = t.size[0], w = t.size[1]
+        if (t.rotated) [h, w] = [w, h]
+        if (r >= t.row && r < t.row + h && c >= t.col && c < t.col + w) {
+            return true
+        }
+    }
+    return false
 }
 </script>
 

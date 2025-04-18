@@ -56,6 +56,10 @@
                     <!-- 左侧设置区 -->
                     <Col :span="9" class="level-settings-panel">
                     <Card dis-hover class="settings-card">
+                        <!-- 操作按钮 -->
+                        <div class="settings-block settings-actions" style="display:flex;flex-direction:row;gap:8px;align-items:center;margin-bottom:8px;">
+                            <Button @click="showResult">显示结果</Button>
+                        </div>
                         <!-- 关卡设置 -->
                         <div class="settings-block">
                             <span class="settings-title">关卡总数</span>
@@ -111,15 +115,8 @@
                                     <Icon type="ios-close" />
                                 </Button>
                                 <span class="treasure-divider" />
-                                <span style="margin-left:10px;">
-                                    <InputNumber v-model="getTreasureSize(tid)[0]" :min="1" :max="5" style="width:48px;" /> x
-                                    <InputNumber v-model="getTreasureSize(tid)[1]" :min="1" :max="5" style="width:48px;" />
-                                </span>
+                                <span style="margin-left:auto;color:#888;">尺寸：{{ getTreasureSize(tid)[0] }} x {{ getTreasureSize(tid)[1] }}</span>
                             </div>
-                        </div>
-                        <!-- 操作按钮 -->
-                        <div class="settings-block settings-actions">
-                            <Button @click="showResult">显示结果</Button>
                         </div>
                         <!-- 排列组合展示区（无缩略图，可点击选中） -->
                         <div class="settings-block">

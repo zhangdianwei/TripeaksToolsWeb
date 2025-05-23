@@ -123,6 +123,12 @@
                         </div>
                         <!-- 已选宝藏 -->
                         <div v-if="selectedTreasures.length" class="settings-block selected-treasure-list">
+    <div style="margin-bottom:10px;font-size:17px;font-weight:bold;color:#2d8cf0;">
+    当前选择宝藏占用格子率：
+    <span style="color:#f56c6c;background:rgba(245,108,108,0.08);padding:2px 8px;border-radius:6px;font-size:18px;vertical-align:middle;">
+        {{ calcSelectedTreasuresOccupiedInfo() }}
+    </span>
+</div>
                             <div v-for="tid in selectedTreasures" :key="tid" class="selected-treasure-row" style="align-items: flex-start;">
                                 <Tooltip placement="right">
                                     <template #content>
@@ -182,6 +188,30 @@
                                             :style="treasureStyle(t)"
                                         />
                                     </template>
+                                </div>
+                            </div>
+                        </Card>
+                        <!-- 所有排列组合预览区 -->
+                        <Card dis-hover class="settings-card" title="所有排列组合样式预览" style="margin-top:12px;">
+                            <div class="arrangement-preview-list" style="display:flex;flex-wrap:wrap;gap:16px;">
+                                <div v-for="(arr, idx) in arrangements" :key="arr.id" style="border:1px solid #eee;border-radius:8px;padding:8px 8px 2px 8px;background:#fafbfc;">
+                                    <div style="margin-bottom:4px;font-size:13px;color:#666;text-align:center;">组合{{ idx+1 }}</div>
+                                    <div class="map-grid" :style="mapGridStyle">
+                                        <div v-for="row in currentLevel.gridM" :key="row" class="map-row">
+                                            <div v-for="col in currentLevel.gridN" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
+                                                <img :src="tileImg" class="tile-bg" />
+                                                <div v-if="isCellOccupied(col-1, row-1, arr.treasures)" style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,0,0,0.38);border-radius:4px;z-index:4;pointer-events:none;"></div>
+                                            </div>
+                                        </div>
+                                        <!-- 上层宝藏渲染：每个宝藏只渲染一次，且图片覆盖其所占区域 -->
+                                        <template v-for="(t, tIdx) in arr.treasures" :key="'treasure-' + tIdx">
+                                            <img
+                                                :src="treasureImg(t.treasureId)"
+                                                :class="['treasure-img', t.rotated ? 'rotated-img' : '']"
+                                                :style="treasureStyle(t)"
+                                            />
+                                        </template>
+                                    </div>
                                 </div>
                             </div>
                         </Card>
@@ -787,6 +817,22 @@ function isCellOccupied(r, c, treasuresArr) {
         }
     }
     return false
+}
+// 统计当前所有选择宝藏的占用格子数/当前关卡的格子总数
+function calcSelectedTreasuresOccupiedInfo() {
+    const rows = currentLevel.value.gridM
+    const cols = currentLevel.value.gridN
+    const total = rows * cols
+    let count = 0
+    for (const tid of currentLevel.value.selectedTreasures) {
+        const t = treasures.find(x => x.id === tid)
+        if (!t) continue
+        let h = t.size[0], w = t.size[1]
+        if (rotationSettings.value[tid]) [h, w] = [w, h]
+        count += h * w
+    }
+    const percent = total > 0 ? Math.round(count / total * 100) : 0
+    return `${count}/${total}=${percent}%`
 }
 </script>
 

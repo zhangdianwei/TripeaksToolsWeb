@@ -238,12 +238,12 @@ function getInitialTreasures() {
         const str = localStorage.getItem(TREASURE_KEY)
         if (str) {
             const arr = JSON.parse(str)
-            if (Array.isArray(arr) && arr.length === 23) {
+            if (Array.isArray(arr) && arr.length === 26) {
                 return arr.map(t => ({ id: t.id, size: t.size.slice() }))
             }
         }
     } catch (e) { }
-    return Array.from({ length: 23 }, (_, i) => ({
+    return Array.from({ length: 26 }, (_, i) => ({
         id: i + 1,
         size: sizeOptions[i % sizeOptions.length].slice()
     }))

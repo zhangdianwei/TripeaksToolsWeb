@@ -14,56 +14,60 @@
                     <div class="treasure-list-scroll">
                         <Row :gutter="12">
                             <Col :span="8" v-for="item in treasures" :key="item.id" style="margin-bottom:12px;">
-                                <Card dis-hover :bordered="true">
-                                    <template #title>
-                                        <div style="display:flex;align-items:center;gap:10px;">
-                                            <img :src="treasureImg(item.id)" style="width:28px;height:28px;object-fit:contain;border-radius:4px;background:#fff;box-shadow:0 1px 3px #eee;" />
-                                            <span style="font-weight:500;">宝藏{{ item.id }}</span>
-                                            <span style="margin-left:8px;">行列：</span>
-                                            <InputNumber v-model="item.size[0]" :min="1" :max="previewCols" style="width:52px;" />
-                                            x
-                                            <InputNumber v-model="item.size[1]" :min="1" :max="previewRows" style="width:52px;" />
-                                        </div>
-                                    </template>
-                                    <div>
-                                        <span style="margin-right:8px;">占用格子：</span>
-                                        <div style="display:inline-block;vertical-align:middle;">
-                                            <div :style="{
-                                                position: 'relative',
-                                                width: (previewCols*32 + (previewCols-1)*3 + 8) + 'px',
-                                                height: (previewRows*32 + (previewRows-1)*3 + 8) + 'px',
-                                                display: 'grid',
-                                                gridTemplateColumns: `repeat(${previewCols},32px)`,
-                                                gridTemplateRows: `repeat(${previewRows},32px)`,
-                                                gap: '3px',
-                                                background: '#eaeaea',
-                                                padding: '4px',
-                                                borderRadius: '6px',
-                                            }">
-                                                <div v-for="r in previewRows" :key="'r'+r" style="display:contents;">
-                                                    <div v-for="c in previewCols" :key="'cell'+r+'-'+c" style="position:relative;width:32px;height:32px;">
-                                                        <img :src="tileImg" style="width:32px;height:32px;object-fit:cover;display:block;border-radius:2px;" />
-                                                        <div v-if="r <= item.size[0] && c <= item.size[1]"
-                                                            style="position:absolute;left:0;top:0;width:32px;height:32px;background:rgba(255,0,0,0.38);border-radius:2px;z-index:4;pointer-events:none;"></div>
+                            <Card dis-hover :bordered="true">
+                                <template #title>
+                                    <div style="display:flex;align-items:center;gap:10px;">
+                                        <img :src="treasureImg(item.id)"
+                                            style="width:28px;height:28px;object-fit:contain;border-radius:4px;background:#fff;box-shadow:0 1px 3px #eee;" />
+                                        <span style="font-weight:500;">宝藏{{ item.id }}</span>
+                                        <span style="margin-left:8px;">行列：</span>
+                                        <InputNumber v-model="item.size[0]" :min="1" :max="previewCols"
+                                            style="width:52px;" />
+                                        x
+                                        <InputNumber v-model="item.size[1]" :min="1" :max="previewRows"
+                                            style="width:52px;" />
+                                    </div>
+                                </template>
+                                <div>
+                                    <span style="margin-right:8px;">占用格子：</span>
+                                    <div style="display:inline-block;vertical-align:middle;">
+                                        <div :style="{
+    position: 'relative',
+    width: (previewCols * 32 + (previewCols - 1) * 3 + 8) + 'px',
+    height: (previewRows * 32 + (previewRows - 1) * 3 + 8) + 'px',
+    display: 'grid',
+    gridTemplateColumns: `repeat(${previewCols},32px)`,
+    gridTemplateRows: `repeat(${previewRows},32px)`,
+    gap: '3px',
+    background: '#eaeaea',
+    padding: '4px',
+    borderRadius: '6px',
+}">
+                                            <div v-for="r in previewRows" :key="'r' + r" style="display:contents;">
+                                                <div v-for="c in previewCols" :key="'cell' + r + '-' + c"
+                                                    style="position:relative;width:32px;height:32px;">
+                                                    <img :src="tileImg"
+                                                        style="width:32px;height:32px;object-fit:cover;display:block;border-radius:2px;" />
+                                                    <div v-if="r <= item.size[0] && c <= item.size[1]"
+                                                        style="position:absolute;left:0;top:0;width:32px;height:32px;background:rgba(255,0,0,0.38);border-radius:2px;z-index:4;pointer-events:none;">
                                                     </div>
                                                 </div>
-                                                <img :src="treasureImg(item.id)"
-                                                    :style="{
-                                                        position: 'absolute',
-                                                        left: '4px',
-                                                        top: '4px',
-                                                        width: (item.size[1]*32 + (item.size[1]-1)*3) + 'px',
-                                                        height: (item.size[0]*32 + (item.size[0]-1)*3) + 'px',
-                                                        objectFit: 'contain',
-                                                        zIndex: 10,
-                                                        pointerEvents: 'none',
-                                                        filter: 'drop-shadow(0 1px 2px #aaa)'
-                                                    }"
-                                                />
                                             </div>
+                                            <img :src="treasureImg(item.id)" :style="{
+                                                position: 'absolute',
+                                                left: '4px',
+                                                top: '4px',
+                                                width: (item.size[1] * 32 + (item.size[1] - 1) * 3) + 'px',
+                                                height: (item.size[0] * 32 + (item.size[0] - 1) * 3) + 'px',
+                                                objectFit: 'contain',
+                                                zIndex: 10,
+                                                pointerEvents: 'none',
+                                                filter: 'drop-shadow(0 1px 2px #aaa)'
+                                            }" />
                                         </div>
                                     </div>
-                                </Card>
+                                </div>
+                            </Card>
                             </Col>
                         </Row>
                     </div>
@@ -85,7 +89,7 @@
                         <!-- 关卡设置 -->
                         <div class="settings-block">
                             <span class="settings-title">关卡总数</span>
-                            <InputNumber v-model="levelCount" :min="1" :max="10"
+                            <InputNumber v-model="levelCount" :min="1" :max="100"
                                 style="width:60px;margin-right:18px;" />
                             <span class="settings-title">当前关卡</span>
                             <Select v-model="curLevelIdx" style="width:120px;">
@@ -97,16 +101,17 @@
                         <!-- 地图规格 -->
                         <div class="settings-block">
                             <span class="settings-title">地图大小</span>
-                            <InputNumber v-model="gridN" :min="2" :max="12" style="width:60px;" :disabled="arrangements.length > 0" /> x
-                            <InputNumber v-model="gridM" :min="2" :max="12" style="width:60px;" :disabled="arrangements.length > 0" />
+                            <InputNumber v-model="gridN" :min="2" :max="12" style="width:60px;"
+                                :disabled="arrangements.length > 0" /> x
+                            <InputNumber v-model="gridM" :min="2" :max="12" style="width:60px;"
+                                :disabled="arrangements.length > 0" />
                         </div>
                         <!-- 宝藏选择 -->
                         <div class="settings-block">
                             <span class="settings-title">选择宝藏</span>
                             <Select v-model="selectedTreasures" multiple transfer
                                 :dropdown-style="{ maxHeight: '500px', overflowY: 'auto', zIndex: 3001 }"
-                                style="width:220px;"
-                                :disabled="arrangements.length > 0">
+                                style="width:220px;" :disabled="arrangements.length > 0">
                                 <Option v-for="item in treasures" :key="item.id" :value="item.id">
                                     <Tooltip placement="right">
                                         <template #content>
@@ -119,17 +124,20 @@
                                     <span style="margin-left:7px;">宝藏{{ item.id }}</span>
                                 </Option>
                             </Select>
-                            <span v-if="selectedTreasures.length" style="margin-left:8px;">（共{{ selectedTreasures.length }}个）</span>
+                            <span v-if="selectedTreasures.length" style="margin-left:8px;">（共{{ selectedTreasures.length
+                                }}个）</span>
                         </div>
                         <!-- 已选宝藏 -->
                         <div v-if="selectedTreasures.length" class="settings-block selected-treasure-list">
-    <div style="margin-bottom:10px;font-size:17px;font-weight:bold;color:#2d8cf0;">
-    当前选择宝藏占用格子率：
-    <span style="color:#f56c6c;background:rgba(245,108,108,0.08);padding:2px 8px;border-radius:6px;font-size:18px;vertical-align:middle;">
-        {{ calcSelectedTreasuresOccupiedInfo() }}
-    </span>
-</div>
-                            <div v-for="tid in selectedTreasures" :key="tid" class="selected-treasure-row" style="align-items: flex-start;">
+                            <div style="margin-bottom:10px;font-size:17px;font-weight:bold;color:#2d8cf0;">
+                                当前选择宝藏占用格子率：
+                                <span
+                                    style="color:#f56c6c;background:rgba(245,108,108,0.08);padding:2px 8px;border-radius:6px;font-size:18px;vertical-align:middle;">
+                                    {{ calcSelectedTreasuresOccupiedInfo() }}
+                                </span>
+                            </div>
+                            <div v-for="tid in selectedTreasures" :key="tid" class="selected-treasure-row"
+                                style="align-items: flex-start;">
                                 <Tooltip placement="right">
                                     <template #content>
                                         <img :src="treasureImg(tid)"
@@ -139,12 +147,16 @@
                                         style="width:28px;height:28px;object-fit:contain;vertical-align:middle;border-radius:4px;background:#fff;box-shadow:0 1px 3px #eee;margin-right:8px;" />
                                 </Tooltip>
                                 <!-- 标题：宝藏编号 + 尺寸 -->
-                                <span style="margin-right:16px;font-weight:500;">宝藏{{ tid }} <span style="color:#888;font-weight:400;">({{ getTreasureSize(tid)[0] }} x {{ getTreasureSize(tid)[1] }})</span></span>
+                                <span style="margin-right:16px;font-weight:500;">宝藏{{ tid }} <span
+                                        style="color:#888;font-weight:400;">({{ getTreasureSize(tid)[0] }} x {{
+                                            getTreasureSize(tid)[1] }})</span></span>
                                 <!-- 占用格子区域已移除红色格子显示 -->
                                 <div style="display:inline-block;margin-right:16px;">
                                 </div>
-                                <Checkbox v-model="rotationSettings[tid]" style="margin-right:12px;" :disabled="arrangements.length > 0">旋转</Checkbox>
-                                <Button size="small" type="error" ghost @click="removeTreasure(tid)" style="margin-right:10px;" :disabled="arrangements.length > 0">
+                                <Checkbox v-model="rotationSettings[tid]" style="margin-right:12px;"
+                                    :disabled="arrangements.length > 0">旋转</Checkbox>
+                                <Button size="small" type="error" ghost @click="removeTreasure(tid)"
+                                    style="margin-right:10px;" :disabled="arrangements.length > 0">
                                     <Icon type="ios-close" />
                                 </Button>
                                 <span class="treasure-divider" />
@@ -154,16 +166,20 @@
                         <Divider style="margin:16px 0;" />
                         <div class="settings-block">
                             <span class="settings-title">排列组合</span>
-                            <Button size="small" icon="md-add" style="margin-left:10px;vertical-align:middle;" @click="addRandomArrangement">新增排列</Button>
-                            <Button size="small" icon="ios-trash" type="warning" style="margin-left:8px;vertical-align:middle;" @click="clearArrangements">清空</Button>
+                            <Button size="small" icon="md-add" style="margin-left:10px;vertical-align:middle;"
+                                @click="addRandomArrangement">新增排列</Button>
+                            <Button size="small" icon="ios-trash" type="warning"
+                                style="margin-left:8px;vertical-align:middle;" @click="clearArrangements">清空</Button>
                             <span v-if="arrangements.length === 0" style="color:#aaa;">无</span>
                             <div v-else class="arrangement-list">
                                 <div v-for="(arr, idx) in arrangements" :key="arr.id" class="arrangement-item"
                                     :class="{ selected: idx === selectedArrangementIndex }"
                                     @click="selectArrangement(idx)">
                                     <span>组合{{ idx + 1 }}（共{{ arr.treasures.length }}个宝藏）</span>
-                                    <Button size="small" style="margin-left:12px;" @click.stop="refreshArrangement(idx)">刷新</Button>
-                                    <Button size="small" type="error" ghost @click.stop="deleteArrangement(idx)" style="margin-left:16px;">删除</Button>
+                                    <Button size="small" style="margin-left:12px;"
+                                        @click.stop="refreshArrangement(idx)">刷新</Button>
+                                    <Button size="small" type="error" ghost @click.stop="deleteArrangement(idx)"
+                                        style="margin-left:16px;">删除</Button>
                                 </div>
                             </div>
                         </div>
@@ -171,50 +187,54 @@
                     </Col>
                     <!-- 右侧地图显示区（新版 iView 风格） -->
                     <Col :span="15" class="level-map-panel">
-                        <Card dis-hover class="settings-card" title="关卡布局预览" style="margin-bottom:16px;">
-                            <div class="map-area">
+                    <Card dis-hover class="settings-card" title="关卡布局预览" style="margin-bottom:16px;">
+                        <div class="map-area">
+                            <div class="map-grid" :style="mapGridStyle">
+                                <div v-for="row in currentLevel.gridM" :key="row" class="map-row">
+                                    <div v-for="col in currentLevel.gridN" :key="col" class="map-cell"
+                                        :style="cellStyle(row - 1, col - 1)">
+                                        <img :src="tileImg" class="tile-bg" />
+                                        <div v-if="isCellOccupied(col - 1, row - 1, currentArrangement.treasures)"
+                                            style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,0,0,0.38);border-radius:4px;z-index:4;pointer-events:none;">
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- 上层宝藏渲染：每个宝藏只渲染一次，且图片覆盖其所占区域 -->
+                                <template v-for="(t, tIdx) in currentArrangement.treasures" :key="'treasure-' + tIdx">
+                                    <img :src="treasureImg(t.treasureId)"
+                                        :class="['treasure-img', t.rotated ? 'rotated-img' : '']"
+                                        :style="treasureStyle(t)" />
+                                </template>
+                            </div>
+                        </div>
+                    </Card>
+                    <!-- 所有排列组合预览区 -->
+                    <Card dis-hover class="settings-card" title="所有排列组合样式预览" style="margin-top:12px;">
+                        <div class="arrangement-preview-list" style="display:flex;flex-wrap:wrap;gap:16px;">
+                            <div v-for="(arr, idx) in arrangements" :key="arr.id"
+                                style="border:1px solid #eee;border-radius:8px;padding:8px 8px 2px 8px;background:#fafbfc;">
+                                <div style="margin-bottom:4px;font-size:13px;color:#666;text-align:center;">组合{{ idx + 1
+                                    }}</div>
                                 <div class="map-grid" :style="mapGridStyle">
                                     <div v-for="row in currentLevel.gridM" :key="row" class="map-row">
-                                        <div v-for="col in currentLevel.gridN" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
+                                        <div v-for="col in currentLevel.gridN" :key="col" class="map-cell"
+                                            :style="cellStyle(row - 1, col - 1)">
                                             <img :src="tileImg" class="tile-bg" />
-                                            <div v-if="isCellOccupied(col-1, row-1, currentArrangement.treasures)" style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,0,0,0.38);border-radius:4px;z-index:4;pointer-events:none;"></div>
+                                            <div v-if="isCellOccupied(col - 1, row - 1, arr.treasures)"
+                                                style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,0,0,0.38);border-radius:4px;z-index:4;pointer-events:none;">
+                                            </div>
                                         </div>
                                     </div>
                                     <!-- 上层宝藏渲染：每个宝藏只渲染一次，且图片覆盖其所占区域 -->
-                                    <template v-for="(t, tIdx) in currentArrangement.treasures" :key="'treasure-' + tIdx">
-                                        <img
-                                            :src="treasureImg(t.treasureId)"
+                                    <template v-for="(t, tIdx) in arr.treasures" :key="'treasure-' + tIdx">
+                                        <img :src="treasureImg(t.treasureId)"
                                             :class="['treasure-img', t.rotated ? 'rotated-img' : '']"
-                                            :style="treasureStyle(t)"
-                                        />
+                                            :style="treasureStyle(t)" />
                                     </template>
                                 </div>
                             </div>
-                        </Card>
-                        <!-- 所有排列组合预览区 -->
-                        <Card dis-hover class="settings-card" title="所有排列组合样式预览" style="margin-top:12px;">
-                            <div class="arrangement-preview-list" style="display:flex;flex-wrap:wrap;gap:16px;">
-                                <div v-for="(arr, idx) in arrangements" :key="arr.id" style="border:1px solid #eee;border-radius:8px;padding:8px 8px 2px 8px;background:#fafbfc;">
-                                    <div style="margin-bottom:4px;font-size:13px;color:#666;text-align:center;">组合{{ idx+1 }}</div>
-                                    <div class="map-grid" :style="mapGridStyle">
-                                        <div v-for="row in currentLevel.gridM" :key="row" class="map-row">
-                                            <div v-for="col in currentLevel.gridN" :key="col" class="map-cell" :style="cellStyle(row - 1, col - 1)">
-                                                <img :src="tileImg" class="tile-bg" />
-                                                <div v-if="isCellOccupied(col-1, row-1, arr.treasures)" style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,0,0,0.38);border-radius:4px;z-index:4;pointer-events:none;"></div>
-                                            </div>
-                                        </div>
-                                        <!-- 上层宝藏渲染：每个宝藏只渲染一次，且图片覆盖其所占区域 -->
-                                        <template v-for="(t, tIdx) in arr.treasures" :key="'treasure-' + tIdx">
-                                            <img
-                                                :src="treasureImg(t.treasureId)"
-                                                :class="['treasure-img', t.rotated ? 'rotated-img' : '']"
-                                                :style="treasureStyle(t)"
-                                            />
-                                        </template>
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
+                        </div>
+                    </Card>
                     </Col>
                 </Row>
             </TabPane>
@@ -293,7 +313,7 @@ function loadLevels() {
             const arr = JSON.parse(str)
             if (Array.isArray(arr)) return arr
         }
-    } catch (e) {}
+    } catch (e) { }
     return []
 }
 
@@ -601,7 +621,7 @@ function addRandomArrangement() {
     // 随机打乱顺序
     for (let i = treasuresList.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
-        ;[treasuresList[i], treasuresList[j]] = [treasuresList[j], treasuresList[i]]
+            ;[treasuresList[i], treasuresList[j]] = [treasuresList[j], treasuresList[i]]
     }
     const gridRows = gridN.value
     const gridCols = gridM.value
@@ -724,7 +744,7 @@ function refreshArrangement(idx) {
     function dfs(placed, idxTry) {
         if (idxTry === treasuresList.length) {
             // 不与其它项重复即可
-            if (!arrangements.value.some((a, i) => i!==idx && isSame(a, { treasures: placed }))) {
+            if (!arrangements.value.some((a, i) => i !== idx && isSame(a, { treasures: placed }))) {
                 arrangements.value[idx] = { id: Date.now() + Math.random(), treasures: placed }
                 selectedArrangementIndex.value = idx
                 return true
@@ -919,6 +939,7 @@ function calcSelectedTreasuresOccupiedInfo() {
     gap: 10px;
     margin-top: 8px;
 }
+
 .arrangement-item {
     display: flex;
     align-items: center;
@@ -929,10 +950,12 @@ function calcSelectedTreasuresOccupiedInfo() {
     cursor: pointer;
     transition: background 0.2s, border 0.2s;
 }
+
 .arrangement-item.selected {
     background: #e6f7ff;
     border: 1.5px solid #1890ff;
 }
+
 .treasure-divider {
     display: inline-block;
     vertical-align: middle;
@@ -941,11 +964,13 @@ function calcSelectedTreasuresOccupiedInfo() {
     background: #ddd;
     margin: 0 10px 0 0;
 }
+
 .treasure-img {
     transition: transform 0.2s;
     object-fit: contain;
     display: block;
 }
+
 .rotated-img {
     /* 旋转图片并保证拉伸方向正确 */
     /* transform 由 style 绑定动态控制，避免和style冲突 */

@@ -248,6 +248,12 @@
                         <Button type="primary" ghost @click="downloadTreasures">
                             <Icon type="ios-download" style="margin-right:6px;" />下载结果
                         </Button>
+                        <Upload accept=".json" :show-upload-list="false" :before-upload="handleTreasuresImport"
+                            action="">
+                            <Button type="primary" ghost>
+                                <Icon type="ios-cloud-upload" style="margin-right:6px;" />导入JSON
+                            </Button>
+                        </Upload>
                     </div>
                     <div style="display:flex;align-items:center;gap:16px;">
                         <span style="font-weight:500;width:96px;">关卡设置：</span>
@@ -257,6 +263,11 @@
                         <Button type="primary" ghost @click="downloadLevels">
                             <Icon type="ios-download" style="margin-right:6px;" />下载结果
                         </Button>
+                        <Upload accept=".json" :show-upload-list="false" :before-upload="handleLevelsImport" action="">
+                            <Button type="primary" ghost>
+                                <Icon type="ios-cloud-upload" style="margin-right:6px;" />导入JSON
+                            </Button>
+                        </Upload>
                     </div>
                 </div>
                 <Modal v-model="showResultModal" title="关卡设置结果" width="700" :footer-hide="true">
@@ -274,7 +285,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
-import { Row, Col, Card, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon, Message, List, ListItem, Divider } from 'view-ui-plus'
+import { Row, Col, Card, InputNumber, Select, Option, Button, Checkbox, Tabs, TabPane, Tooltip, Modal, Icon, Message, List, ListItem, Divider, Upload } from 'view-ui-plus'
 
 const activeTab = ref('advanced')
 
@@ -853,6 +864,75 @@ function calcSelectedTreasuresOccupiedInfo() {
     }
     const percent = total > 0 ? Math.round(count / total * 100) : 0
     return `${count}/${total}=${percent}%`
+}
+
+function handleTreasuresImport(file) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result)
+            // 验证数据格式
+            if (!Array.isArray(data) || data.length !== 26) {
+                throw new Error('宝藏数据格式错误：必须是包含26个宝藏的数组')
+            }
+            // 验证每个宝藏的数据结构
+            for (const item of data) {
+                if (!item.id || !Array.isArray(item.size) || item.size.length !== 2) {
+                    throw new Error('宝藏数据格式错误：每个宝藏必须包含id和size属性')
+                }
+                if (item.id < 1 || item.id > 26) {
+                    throw new Error('宝藏ID必须在1-26之间')
+                }
+                if (item.size[0] < 1 || item.size[1] < 1) {
+                    throw new Error('宝藏尺寸必须大于0')
+                }
+            }
+            // 更新数据
+            treasures.splice(0, treasures.length, ...data.map(t => ({ id: t.id, size: t.size.slice() })))
+            Message.success('宝藏设置导入成功！')
+        } catch (err) {
+            Message.error(err.message || '导入失败：数据格式错误')
+        }
+    }
+    reader.onerror = () => {
+        Message.error('文件读取失败')
+    }
+    reader.readAsText(file)
+    return false // 阻止自动上传
+}
+
+function handleLevelsImport(file) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result)
+            // 验证数据格式
+            if (!Array.isArray(data)) {
+                throw new Error('关卡数据格式错误：必须是数组')
+            }
+            // 验证每个关卡的数据结构
+            for (const level of data) {
+                if (!level.gridN || !level.gridM || !Array.isArray(level.selectedTreasures)) {
+                    throw new Error('关卡数据格式错误：每个关卡必须包含gridN、gridM和selectedTreasures属性')
+                }
+                if (level.gridN < 2 || level.gridN > 12 || level.gridM < 2 || level.gridM > 12) {
+                    throw new Error('关卡尺寸必须在2-12之间')
+                }
+            }
+            // 更新数据
+            levels.splice(0, levels.length, ...data)
+            levelCount.value = data.length
+            curLevelIdx.value = 0
+            Message.success('关卡设置导入成功！')
+        } catch (err) {
+            Message.error(err.message || '导入失败：数据格式错误')
+        }
+    }
+    reader.onerror = () => {
+        Message.error('文件读取失败')
+    }
+    reader.readAsText(file)
+    return false // 阻止自动上传
 }
 </script>
 

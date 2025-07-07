@@ -1,19 +1,20 @@
 <script setup>
-import { ref, computed, reactive } from 'vue'
-import { Card, Input, Button, Upload, Icon, Message, Row, Col, Alert } from 'view-ui-plus'
+import { ref, computed, reactive, watch, onMounted } from 'vue'
+import { Card, Input, Button, Upload, Icon, Message, Row, Col, Alert, Exception } from 'view-ui-plus'
 import JSZip from 'jszip'
 
 
 const originalUrl = ref('https://playables.safedk.com/74616804a7dc29147dfb0afe122a9fd2/67518f8cfdac53eb0cf4ce54f52caec2/ad.html')
-const srcObj = reactive({
-    applovinJSContent: '', //带al_renderHtml前缀的
-    srcHTMLContent: '' //真正可玩的html内容
-})
 const parsedRes = reactive({
+    srcHTMLContent: '', // 真正可玩的html内容
     srcItems: [],
-    dstItems: [],
 }) //解析出的内容
-const ghostStudioContent = ref('')
+const modifiedObj = reactive({
+    resItems: [], //经过修改后的srcItems
+    finalHTMLContent: '' //经过修改后的html内容
+}) //修改后的内容
+
+
 const parsing = ref(false)
 
 const serverAddress = computed(() => {
@@ -71,16 +72,6 @@ async function fetchByProxy(url, contentType = 'html') {
     throw new Error(`无法通过代理服务获取${contentType}内容`)
 }
 
-function getAbstractUrl(url) {
-    if (url.startsWith('http')) {
-        return url
-    }
-    if (url.startsWith('/')) {
-        return serverAddress.value + url.slice(1)
-    }
-    return serverAddress.value + url
-}
-
 function replace_al_renderHtml(html) {
     // 修复相对路径为绝对路径
     let result = html.replace(/src="js\//g, 'src="' + serverAddress.value + 'js/');
@@ -96,76 +87,73 @@ function replace_al_renderHtml(html) {
     return result;
 }
 
+/**
+ * 创建隐藏 iframe 并返回引用
+ */
+function createHiddenIframe() {
+    const iframe = document.createElement('iframe')
+    iframe.style.display = 'none'
+    iframe.sandbox = 'allow-scripts'
+    document.body.appendChild(iframe)
+    return iframe
+}
+
+/**
+ * 监听 window message，返回移除监听的函数和内容 Promise
+ */
+function waitForHtmlMessage(timeoutMs = 10000) {
+    return new Promise((resolve, reject) => {
+        let timer = null
+        function handler(event) {
+            if (event.data && event.data.type === 'html') {
+                cleanup()
+                resolve(event.data.content)
+            }
+        }
+        function cleanup() {
+            window.removeEventListener('message', handler)
+            if (timer) clearTimeout(timer)
+        }
+        window.addEventListener('message', handler)
+        timer = setTimeout(() => {
+            cleanup()
+            reject(new Error('等待iframe响应超时'))
+        }, timeoutMs)
+    })
+}
+
+/**
+ * 主流程：解析原始URL，获取主HTML内容
+ */
 async function parseOriginalUrl() {
     if (!originalUrl.value) {
         Message.warning('请输入原始链接')
         return false
     }
-
     let iframe = null
-    let messageHandler = null
-
     try {
-        // 创建iframe
-        iframe = document.createElement('iframe')
-        iframe.style.display = 'none'
-        iframe.sandbox = 'allow-scripts'
-        document.body.appendChild(iframe)
+        // 1. 创建 iframe
+        iframe = createHiddenIframe()
 
-        // 监听消息
-        let htmlResult = null
-        messageHandler = (event) => {
-            console.log('messageHandler', event)
-            if (event.data.type === 'html') {
-                htmlResult = event.data.content
-                srcObj.srcHTMLContent = htmlResult
-            }
-        }
-        window.addEventListener('message', messageHandler)
-
-        // 创建HTML内容
+        // 2. 获取原始HTML内容并处理
         let iframeHtml = await fetchByProxy(originalUrl.value, 'html')
         iframeHtml = replace_al_renderHtml(iframeHtml)
-        console.log('iframeHtml')
-        console.log(iframeHtml)
 
-        // 创建data URL并加载
-        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(iframeHtml);
-        iframe.src = dataUrl;
+        // 3. 加载到 iframe
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(iframeHtml)
+        iframe.src = dataUrl
+        console.log('iframe已加载，等待al_renderHtml调用...')
 
-        // 添加调试信息
-        console.log('iframe已加载，等待al_renderHtml调用...');
-
-        // 等待结果（最多10秒）
-        await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                console.log('超时：未收到al_renderHtml调用');
-                reject(new Error('等待iframe响应超时'))
-            }, 10000)
-
-            const checkResult = () => {
-                if (htmlResult) {
-                    clearTimeout(timeout)
-                    resolve()
-                } else {
-                    setTimeout(checkResult, 100)
-                }
-            }
-            checkResult()
-        })
-        // 设置结果
-        srcObj.applovinJSContent = htmlResult
+        // 4. 等待 window message 返回主内容
+        const htmlResult = await waitForHtmlMessage(10000)
+        parsedRes.srcHTMLContent = htmlResult
         return true
-
     } catch (error) {
         Message.error(`解析失败: ${error.message}`)
         console.error('详细错误:', error)
         return false
     } finally {
-        // 清理资源
-        if (messageHandler) {
-            window.removeEventListener('message', messageHandler)
-        }
+        // 5. 清理 iframe
         if (iframe) {
             document.body.removeChild(iframe)
         }
@@ -178,18 +166,21 @@ async function handleParse() {
         return
     }
 
+    // if (!SrcAssetItemHelper.value) {
+    //     Message.error('资源处理工具未初始化，无法解析资源！')
+    //     return
+    // }
+
     parsing.value = true
 
     try {
-        // 第一步：解析原始URL
         console.log('第一步：解析原始URL...')
-        const parseSuccess = await parseOriginalUrl()
-        if (!parseSuccess) {
-            return
+        await parseOriginalUrl();
+        if (!parsedRes.srcHTMLContent) {
+            return;
         }
         console.log('原始URL解析完成！')
 
-        // 第二步：获取原始资源项
         console.log('第二步：获取原始资源项...')
         parsedRes.srcItems = getAllOrgResourceItems()
         if (!parsedRes.srcItems) {
@@ -198,14 +189,8 @@ async function handleParse() {
         }
         console.log(`找到 ${parsedRes.srcItems.length} 个原始资源项`)
 
-        // 第三步：解析所有资源项
-        console.log('第三步：解析所有资源项...')
-        parsedRes.dstItems = await parseAllOrgResourceItems(parsedRes.srcItems)
-        if (!parsedRes.dstItems || parsedRes.dstItems.length === 0) {
-            console.warn('解析资源失败')
-            return
-        }
-        console.log(`解析完成，共生成 ${parsedRes.dstItems.length} 个文件`)
+        resetModifiedObj(parsedRes.srcItems)
+
         Message.success('解析完成！')
 
     } catch (error) {
@@ -269,23 +254,8 @@ function findRangeByStack(orgStr, keyStr, seperator) {
 }
 
 function getAllOrgResourceItems() {
-    if (!srcObj.srcHTMLContent) {
-        console.log('srcHTMLContent为空')
-        return null
-    }
-
-    const content = srcObj.srcHTMLContent
-
-    // 使用findRangeByStack查找playableAssets:后面的JSON数组
-    const range = findRangeByStack(content, 'playableAssets:', '[]')
-
-    if (!range) {
-        console.log('未找到playableAssets数组')
-        return null
-    }
-
     // 提取JSON字符串
-    const jsonStr = content.substring(range.start, range.end + 1)
+    const jsonStr = SrcAssetItemHelper.value.getResContent(parsedRes.srcHTMLContent);
     console.log('提取的JSON字符串:', jsonStr.substring(0, 200) + '...')
 
     try {
@@ -308,60 +278,46 @@ function base64ToBinary(base64String) {
     return bytes
 }
 
-// AssetItem 类
-class AssetItem {
-    constructor(srcAssetItem) {
-        this.originalItem = srcAssetItem
+class ParseHelperBase {
+    async reloadAllFromFileMap(srcItems, fileMap) {
+        throw new Exception("未实现");
     }
-
-    getKey() {
-        return this.originalItem.key || 'unknown'
+    async toAllDownloadItems(srcItems) {
+        throw new Exception("未实现");
     }
-
-    getType() {
-        return this.originalItem.type || 'unknown'
+    getResContent(html) {
+        throw new Exception("未实现");
     }
-
-
-
-    getAtlasDataBase64Data() {
-        return this.originalItem.atlasURL || null
+    replaceResContent(html, str) {
+        throw new Exception("未实现");
     }
+}
 
-    getMimeType() {
-        const base64Data = this.getBase64Data()
+class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
+    getKey(item) {
+        return item.key || 'unknown'
+    }
+    getType(item) {
+        return item.type || 'unknown'
+    }
+    getAtlasDataBase64Data(item) {
+        return item.atlasURL || null
+    }
+    getMimeType(item) {
+        const base64Data = this.getBase64Data(item)
         if (!base64Data) return null
-
         const mimeMatch = base64Data.match(/data:([^;]+);base64,/)
         return mimeMatch ? mimeMatch[1] : null
     }
-
-    getBase64Data() {
-        // 尝试音频URL数组
-        if (this.originalItem.urls && this.originalItem.urls.length > 0) {
-            return this.originalItem.urls[0]
-        }
-
-        // 尝试普通URL
-        if (this.originalItem.url) {
-            return this.originalItem.url
-        }
-
-        // 都没有找到
-        return null
-    }
-
-    getBinaryContent() {
-        const base64Data = this.getBase64Data()
+    getBinaryContent(item) {
+        const base64Data = this.getBase64Data(item)
         if (!base64Data) return null
         return base64ToBinary(base64Data)
     }
-
-    getFileName() {
-        const mimeType = this.getMimeType()
-        const key = this.getKey()
-
-        switch (this.getType()) {
+    getFileName(item) {
+        const mimeType = this.getMimeType(item)
+        const key = this.getKey(item)
+        switch (this.getType(item)) {
             case 'image':
                 if (mimeType === 'image/jpeg') {
                     return `${key}.jpeg`
@@ -374,14 +330,11 @@ class AssetItem {
             case 'atlas':
                 return `${key}_texture.png`
         }
-
         return `${key}.unknown`
     }
-
-    getAtlasData() {
-        const atlasBase64 = this.getAtlasDataBase64Data()
+    getAtlasData(item) {
+        const atlasBase64 = this.getAtlasDataBase64Data(item)
         if (!atlasBase64) return null
-
         try {
             return atob(atlasBase64.replace('data:text/json;base64,', ''))
         } catch (e) {
@@ -389,74 +342,60 @@ class AssetItem {
             return null
         }
     }
-
-    toDownloadItem() {
-        const binaryContent = this.getBinaryContent()
+    toDownloadItem(item) {
+        const binaryContent = this.getBinaryContent(item)
         if (!binaryContent) {
             return null
         }
-
-        // console.log(`  解析成功: ${this.getFileName()} (${binaryContent.length} bytes)`)
-
         return {
-            fileName: this.getFileName(),
+            fileName: this.getFileName(item),
             content: binaryContent,
-            type: this.getMimeType()
+            type: this.getMimeType(item)
         }
     }
-
-
-
-    async toDownloadItemAtlas() {
+    async toDownloadItemAtlas(item) {
         let items = [];
-        const key = this.getKey()
-        const atlasData = this.getAtlasData()
+        const key = this.getKey(item)
+        const atlasData = this.getAtlasData(item)
         if (atlasData) {
-            // 保存atlas json
             items.push({
                 fileName: `atlas_src/${key}_atlas.json`,
                 content: atlasData,
                 type: 'text/json'
             })
-            // 保存大图
-            if (this.originalItem.textureURL) {
+            if (item.textureURL) {
                 items.push({
                     fileName: `atlas_src/${key}_texture.png`,
-                    content: base64ToBinary(this.originalItem.textureURL),
+                    content: base64ToBinary(item.textureURL),
                     type: 'image/png'
                 })
             }
             try {
                 const atlasJson = JSON.parse(atlasData)
-                if (atlasJson && Array.isArray(atlasJson.frames) && this.originalItem.textureURL) {
-                    // 只加载一次大图
+                if (atlasJson && Array.isArray(atlasJson.frames) && item.textureURL) {
                     const image = await new Promise((resolve, reject) => {
                         const img = new window.Image()
                         img.onload = () => resolve(img)
                         img.onerror = reject
-                        img.src = this.originalItem.textureURL
+                        img.src = item.textureURL
                     })
                     for (const frameObj of atlasJson.frames) {
                         const frame = frameObj.frame
                         const filename = frameObj.filename
                         const spriteSourceSize = frameObj.spriteSourceSize
                         const sourceSize = frameObj.sourceSize
-                        // 新建canvas，尺寸为sourceSize
                         const canvas = document.createElement('canvas')
                         canvas.width = sourceSize.w
                         canvas.height = sourceSize.h
                         const ctx = canvas.getContext('2d')
                         ctx.clearRect(0, 0, canvas.width, canvas.height)
-                        // 绘制透明底
                         ctx.fillStyle = 'rgba(0,0,0,0)'
                         ctx.fillRect(0, 0, canvas.width, canvas.height)
-                        // 将大图frame区域绘制到spriteSourceSize.x/y
                         ctx.drawImage(
                             image,
                             frame.x, frame.y, frame.w, frame.h,
                             spriteSourceSize.x, spriteSourceSize.y, frame.w, frame.h
                         )
-                        // 导出为png
                         const dataUrl = canvas.toDataURL('image/png')
                         const base64Content = dataUrl.replace(/^data:[^;]+;base64,/, '')
                         const binaryString = atob(base64Content)
@@ -477,177 +416,392 @@ class AssetItem {
         }
         return items;
     }
-
-    getAtlasDownloadItem() {
-        const atlasData = this.getAtlasData()
+    getAtlasDownloadItem(item) {
+        const atlasData = this.getAtlasData(item)
         if (!atlasData) {
             return null
         }
-
         return {
-            fileName: `${this.getKey()}_atlas.json`,
+            fileName: `${this.getKey(item)}_atlas.json`,
             content: atlasData,
             type: 'text/json'
         }
     }
-
-    async toDownloadItems() {
-        const type = this.getType();
+    async toDownloadItems(item) {
+        const type = this.getType(item)
         if (type === 'atlas') {
-            return await this.toDownloadItemAtlas();
+            return await this.toDownloadItemAtlas(item)
         } else {
-            const downloadItem = this.toDownloadItem();
+            const downloadItem = this.toDownloadItem(item)
             if (downloadItem) {
-                return [downloadItem];
+                return [downloadItem]
             }
         }
-        return [];
+        return []
     }
-
-    getSize() {
-        const binaryContent = this.getBinaryContent()
+    getSize(item) {
+        const binaryContent = this.getBinaryContent(item)
         return binaryContent ? binaryContent.length : 0
     }
-
-    getSizeFormatted() {
-        const size = this.getSize()
+    getSizeFormatted(item) {
+        const size = this.getSize(item)
         if (size < 1024) return size + ' B'
         if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB'
         return (size / (1024 * 1024)).toFixed(1) + ' MB'
     }
-}
-
-// 解析所有原始资源项
-// parseAllOrgResourceItems 需支持await
-async function parseAllOrgResourceItems(srcItems) {
-    if (!srcItems || !Array.isArray(srcItems)) {
-        console.log('srcItems无效或不是数组')
+    getBase64Data(item) {
+        if (item.urls && item.urls.length > 0) {
+            return item.urls[0]
+        }
+        if (item.url) {
+            return item.url
+        }
         return null
     }
-
-    console.log(`开始解析 ${srcItems.length} 个资源...`)
-
-    const extractedFiles = []
-
-    for (const asset of srcItems) {
-        const assetItem = new AssetItem(asset)
-        const files = await assetItem.toDownloadItems()
-        extractedFiles.push(...files)
-    }
-
-    console.log(`解析完成，共 ${extractedFiles.length} 个文件`)
-    return extractedFiles
-}
-
-async function downloadAllResources() {
-    try {
-        const dstItems = parsedRes.dstItems;
-        if (!dstItems || dstItems.length === 0) {
-            console.warn('没有可下载的资源')
-            return
-        }
-
-        console.log('正在创建压缩包...')
-
-        // 使用JSZip创建压缩包
-        const zip = new JSZip()
-
-        // 添加所有文件到压缩包
-        dstItems.forEach(file => {
-            // 兼容base64和Uint8Array
-            let content = file.content
-            if (typeof content === 'string' && content.startsWith('data:')) {
-                // base64字符串，去掉前缀
-                const base64Content = content.replace(/^data:[^;]+;base64,/, '')
-                zip.file(file.fileName, base64Content, { base64: true })
-            } else {
-                zip.file(file.fileName, content)
+    setBase64Data(item, content, extra_content) {
+        function toDataUrl(type, data) {
+            if (typeof data === 'string') {
+                if (data.startsWith('data:')) return data;
+                if (type.startsWith('image/')) return `data:${type};base64,${data}`;
+                if (type.startsWith('audio/')) return `data:${type};base64,${data}`;
+                if (type === 'text/json') return `data:text/json;base64,${btoa(unescape(encodeURIComponent(data)))}`;
+                return data;
+            } else if (data instanceof Uint8Array) {
+                let binary = '';
+                for (let i = 0; i < data.length; i++) binary += String.fromCharCode(data[i]);
+                const base64 = btoa(binary);
+                if (type.startsWith('image/')) return `data:${type};base64,${base64}`;
+                if (type.startsWith('audio/')) return `data:${type};base64,${base64}`;
+                if (type === 'text/json') return `data:text/json;base64,${base64}`;
+                return base64;
             }
-        })
-
-        // 生成压缩包
-        const zipBlob = await zip.generateAsync({ type: 'blob' })
-
-        // 创建下载链接
-        const url = URL.createObjectURL(zipBlob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'extracted_resources.zip'
-        a.click()
-
-        // 清理
-        URL.revokeObjectURL(url)
+            return data;
+        }
+        const type = this.getType(item);
+        if (type === 'atlas') {
+            if (content) item.atlasURL = toDataUrl('text/json', content);
+            if (extra_content) item.textureURL = toDataUrl('image/png', extra_content);
+        } else if (type === 'audio') {
+            if (content) item.urls = [toDataUrl('audio/mp3', content)];
+        } else if (type === 'image') {
+            const mimeType = this.getMimeType(item) || 'image/png';
+            if (content) item.url = toDataUrl(mimeType, content);
+        } else {
+            if (content) item.url = content;
+        }
     }
-    catch (ex) {
-        console.error(ex)
+    async reloadAllFromFileMap(items, fileMap) {
+        for (const item of items) {
+            if (item.type === 'atlas') {
+                const key = item.key
+                const texPath = `atlas_src/${key}_texture.png`
+                const jsonPath = `atlas_src/${key}_atlas.json`
+                let jsonContent = fileMap[jsonPath] || null;
+                let textureContent = fileMap[texPath] || null;
+                if (jsonContent) {
+                    try {
+                        const atlasJson = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent
+                        if (atlasJson && Array.isArray(atlasJson.frames)) {
+                            const composed = await composeAtlasTextureFromFrames(atlasJson, key, fileMap, texPath)
+                            if (composed) {
+                                textureContent = composed
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('atlas大图合成失败', e)
+                    }
+                }
+                this.setBase64Data(item, jsonContent, textureContent)
+            } else {
+                const fileName = this.getFileName(item)
+                if (fileMap[fileName]) {
+                    this.setBase64Data(item, fileMap[fileName])
+                }
+            }
+        }
+    }
+    async toAllDownloadItems(items) {
+        const all = []
+        for (const item of items) {
+            const files = await this.toDownloadItems(item)
+            if (files && files.length) all.push(...files)
+        }
+        return all
+    }
+    getResContent(html) {
+        const range = findRangeByStack(html, 'playableAssets:', '[]');
+        if (!range) return '';
+        return html.substring(range.start, range.end + 1);
+    }
+    replaceResContent(html, str) {
+        const range = findRangeByStack(html, 'playableAssets:', '[]');
+        if (!range) return html;
+        return html.substring(0, range.start) + str + html.substring(range.end + 1);
     }
 }
 
-function handleZipUpload(file) {
-    if (!file) {
-        Message.warning('请选择文件')
-        return false
+const SrcAssetItemHelper = computed(() => {
+    return new ParseHelper_Applovin_PhaserEditor()
+})
+
+async function composeAtlasTextureFromFrames(atlasJson, key, fileMap, texPath) {
+    if (!atlasJson || !Array.isArray(atlasJson.frames) || atlasJson.frames.length === 0) return null;
+
+    let maxW = 0, maxH = 0;
+    for (const frameObj of atlasJson.frames) {
+        const frame = frameObj.frame;
+        if (frame.x + frame.w > maxW) maxW = frame.x + frame.w;
+        if (frame.y + frame.h > maxH) maxH = frame.y + frame.h;
     }
+    if (maxW === 0 || maxH === 0) return null;
 
-    if (!file.name.endsWith('.zip')) {
-        Message.error('请上传ZIP格式的文件')
-        return false
+    const canvas = document.createElement('canvas');
+    canvas.width = maxW;
+    canvas.height = maxH;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (const frameObj of atlasJson.frames) {
+        const frame = frameObj.frame;
+        const filename = frameObj.filename;
+        let imgData = fileMap[`atlas/${key}/${filename}`] || fileMap[filename];
+        if (!imgData) continue;
+        await new Promise((resolve, reject) => {
+            const img = new window.Image();
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0, img.width, img.height, frame.x, frame.y, frame.w, frame.h);
+                resolve();
+            };
+            img.onerror = reject;
+            img.src = imgData;
+        });
     }
-
-    Message.success('ZIP文件上传成功，开始处理...')
-
-    setTimeout(() => {
-        ghostStudioContent.value = 'processed_content'
-        Message.success('ZIP处理完成！')
-    }, 2000)
-
-    return false
+    return canvas.toDataURL('image/png');
 }
 
-function downloadApplovinVersion() {
-    if (!ghostStudioContent.value) {
-        console.warn('没有可下载的内容')
-        return
-    }
-
-    const content = `// GhostStudio Applovin Version
-// Generated from: ${originalUrl.value}
-// Processed content: ${ghostStudioContent.value}
-
-${srcObj.srcHTMLContent}`
-
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'ghoststudio_applovin_version.txt'
-    a.click()
-    URL.revokeObjectURL(url)
-    Message.success('Applovin版本下载完成')
-}
-
-function downloadJSContent() {
-    if (!srcObj.applovinJSContent) {
+async function downloadAsFile(content, filename, mimeType = 'text/plain') {
+    if (!content) {
         Message.warning('没有可下载的内容')
         return
     }
-    const blob = new Blob([srcObj.applovinJSContent], { type: 'text/html' })
+    const blob = new Blob([content], { type: mimeType })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'index.html'
+    a.download = filename
     a.click()
     URL.revokeObjectURL(url)
-    Message.success('HTML文件下载完成')
+    Message.success(filename + ' 下载完成')
 }
 
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+async function downloadAsZip(items, filename = 'extracted_resources.zip') {
+    if (!items || items.length === 0) {
+        Message.warning('没有可下载的资源')
+        return
+    }
+    const zip = new JSZip()
+    items.forEach(file => {
+        zip.file(file.fileName, file.content)
+    })
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    downloadAsFile(zipBlob, filename, 'application/zip')
 }
+
+function downloadSrcHTMLContent() {
+    downloadAsFile(parsedRes.srcHTMLContent, 'index_src.html', 'text/html')
+}
+
+function downloadDstHTMLContent() {
+    downloadAsFile(finalHTMLContent.value, 'index_dst.html', 'text/html')
+}
+
+async function downloadSrcResources() {
+    const dstItems = await SrcAssetItemHelper.value.toAllDownloadItems(parsedRes.srcItems)
+    await downloadAsZip(dstItems, 'extracted_resources.zip')
+}
+
+async function downloadDstResources() {
+    const dstItems = await SrcAssetItemHelper.value.toAllDownloadItems(modifiedObj.resItems)
+    await downloadAsZip(dstItems, 'extracted_resources.zip')
+}
+
+// 上传文件/文件夹/zip生成fileMap
+async function buildFileMapFromUpload(fileOrEvent) {
+    let fileMap = {};
+    let fileList = [];
+    let isZip = false;
+    // zip 文件
+    if (fileOrEvent instanceof File && fileOrEvent.name.endsWith('.zip')) {
+        isZip = true;
+    }
+    // 拖拽文件夹（DataTransferItemList）
+    else if (fileOrEvent.dataTransfer && fileOrEvent.dataTransfer.items) {
+        fileList = Array.from(fileOrEvent.dataTransfer.items);
+    }
+    // input[type=file][webkitdirectory] 文件夹上传
+    else if ((fileOrEvent.target && fileOrEvent.target.files && fileOrEvent.target.files.length > 0 && fileOrEvent.target.files[0].webkitRelativePath) ||
+        (fileOrEvent.files && fileOrEvent.files.length > 0 && fileOrEvent.files[0].webkitRelativePath)) {
+        const files = fileOrEvent.target ? fileOrEvent.target.files : fileOrEvent.files;
+        fileList = Array.from(files);
+    }
+    // 单文件
+    else if (fileOrEvent instanceof File) {
+        fileList = [fileOrEvent];
+    }
+
+    // 处理 zip
+    if (isZip) {
+        const zip = await JSZip.loadAsync(fileOrEvent);
+        const entries = Object.keys(zip.files);
+        // 计算根目录前缀
+        let prefix = '';
+        if (entries.length > 0) {
+            const paths = entries.filter(e => !zip.files[e].dir);
+            if (paths.length > 0) {
+                const parts = paths[0].split('/');
+                if (parts.length > 1) {
+                    prefix = parts[0] + '/';
+                    // 检查所有文件都以同一前缀开头
+                    if (!paths.every(p => p.startsWith(prefix))) {
+                        prefix = '';
+                    }
+                }
+            }
+        }
+        for (const entry of entries) {
+            const zipEntry = zip.files[entry];
+            if (!zipEntry.dir) {
+                let content = await zipEntry.async('base64');
+                let key = entry;
+                if (prefix && key.startsWith(prefix)) {
+                    key = key.slice(prefix.length);
+                }
+                fileMap[key] = 'data:;base64,' + content;
+            }
+        }
+        return fileMap;
+    }
+
+    // 处理拖拽文件夹（DataTransferItemList）
+    if (fileList.length > 0 && fileList[0] && fileList[0].webkitGetAsEntry) {
+        // 递归读取所有文件
+        async function readEntries(items, path = '') {
+            for (const item of items) {
+                if (item.webkitGetAsEntry) {
+                    const entry = item.webkitGetAsEntry();
+                    if (entry.isFile) {
+                        await new Promise((resolve) => {
+                            entry.file(file => {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                    // 计算根目录前缀
+                                    let relPath = path + file.name;
+                                    let key = relPath;
+                                    if (key.startsWith('/')) key = key.slice(1);
+                                    const parts = key.split('/');
+                                    if (parts.length > 1 && path === '') {
+                                        key = parts.slice(1).join('/');
+                                    }
+                                    fileMap[key] = reader.result;
+                                    resolve();
+                                };
+                                reader.readAsDataURL(file);
+                            });
+                        });
+                    } else if (entry.isDirectory) {
+                        const dirReader = entry.createReader();
+                        await new Promise((resolve) => {
+                            dirReader.readEntries(async entries => {
+                                await readEntries(entries, path + entry.name + '/');
+                                resolve();
+                            });
+                        });
+                    }
+                }
+            }
+        }
+        await readEntries(fileList);
+        return fileMap;
+    }
+
+    // 处理 input[type=file][webkitdirectory] 或多文件
+    if (fileList.length > 0) {
+        // 计算根目录前缀
+        let prefix = '';
+        if (fileList[0].webkitRelativePath) {
+            const paths = fileList.map(f => f.webkitRelativePath);
+            if (paths.length > 0) {
+                const parts = paths[0].split('/');
+                if (parts.length > 1) {
+                    prefix = parts[0] + '/';
+                    if (!paths.every(p => p.startsWith(prefix))) {
+                        prefix = '';
+                    }
+                }
+            }
+        }
+        for (const file of fileList) {
+            await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    let key = file.webkitRelativePath || file.name;
+                    if (prefix && key.startsWith(prefix)) {
+                        key = key.slice(prefix.length);
+                    }
+                    fileMap[key] = reader.result;
+                    resolve();
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+        return fileMap;
+    }
+
+    Message.error('不支持的上传类型');
+    return null;
+}
+
+function resetModifiedObj(resItems) {
+    modifiedObj.resItems = resItems;
+    const jsonStr = JSON.stringify(modifiedObj.resItems)
+    modifiedObj.finalHTMLContent = SrcAssetItemHelper.value.replaceResContent(parsedRes.srcHTMLContent, jsonStr);
+    iframeRef.value.srcdoc = modifiedObj.finalHTMLContent
+}
+
+async function handleUpload(fileOrEvent) {
+    // 1. 解析上传内容为 { 路径: 文件内容(base64/文本/Uint8Array) }
+    const fileMap = await buildFileMapFromUpload(fileOrEvent)
+    if (!fileMap) return false
+
+    const resItems = JSON.parse(JSON.stringify(modifiedObj.resItems));
+    await SrcAssetItemHelper.value.reloadAllFromFileMap(resItems, fileMap)
+    resetModifiedObj(resItems)
+
+    Message.success('美术替换完成！')
+    return false
+}
+
+function uploadModifiedResource() {
+    // 创建一个 input[type=file][webkitdirectory] 选择器
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.directory = true;
+    input.multiple = true;
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.addEventListener('change', (e) => {
+        handleUpload(e);
+        document.body.removeChild(input);
+    });
+    input.click();
+}
+
+
+const iframeRef = ref(null)
+
 </script>
 
 <template>
@@ -681,56 +835,38 @@ function formatFileSize(bytes) {
                     <div>
                         <Row :gutter="12">
                             <Col>
-                            </Col>
-                            <Col>
-                            <Button type="primary" size="large" @click="downloadJSContent"
-                                :disabled="!srcObj.applovinJSContent">
+                            <Button type="primary" size="large" @click="downloadSrcHTMLContent"
+                                :disabled="!parsedRes.srcHTMLContent">
                                 <Icon type="ios-download" />
-                                下载解析后的HTML({{ formatFileSize(srcObj.applovinJSContent.length) }})
+                                下载原版HTML
                             </Button>
-                            </Col>
-                            <Col>
-                            <Button type="primary" size="large" @click="downloadAllResources"
-                                :disabled="!srcObj.applovinJSContent">
+                            <Button type="primary" size="large" @click="downloadSrcResources"
+                                :disabled="parsedRes.srcItems.length == 0">
                                 <Icon type="ios-download" />
-                                下载所有资源
+                                下载原版资源
+                            </Button>
+                            <Divider type="vertical"></Divider>
+                            <Button type="primary" size="large" @click="uploadModifiedResource"
+                                :disabled="parsedRes.srcItems.length == 0">
+                                <Icon type="ios-download" />
+                                上传改版资源
+                            </Button>
+                            <Divider type="vertical"></Divider>
+                            <Button type="primary" size="large" @click="downloadDstHTMLContent"
+                                :disabled="!modifiedObj.finalHTMLContent">
+                                <Icon type="ios-download" />
+                                下载改版HTML
+                            </Button>
+                            <Button type="primary" size="large" @click="downloadDstResources"
+                                :disabled="modifiedObj.resItems.length == 0">
+                                <Icon type="ios-download" />
+                                下载改版资源
                             </Button>
                             </Col>
                         </Row>
-                    </div>
-                </Card>
-
-                <Card style="margin-top: 24px;">
-                    <template #title>
-                        美术替图结果
-                    </template>
-                    <div>
-                        <Alert type="info" show-icon>
-                            <template #desc>
-                                <p>上传的压缩包要和下载的压缩包一模一样，不能多文件也不能少文件。</p>
-                            </template>
-                        </Alert>
-                        <Upload accept=".zip" :show-upload-list="false" :before-upload="handleZipUpload" action="" drag
-                            style="margin-top: 16px;">
-                            <div style="padding: 20px;">
-                                <Icon type="ios-cloud-upload" size="52" />
-                                <p style="margin: 10px 0;">点击或拖拽文件到此区域上传</p>
-                                <p style="color: #c5c8ce;">支持 .zip 格式文件</p>
-                            </div>
-                        </Upload>
-                    </div>
-                </Card>
-
-                <Card style="margin-top: 24px;">
-                    <template #title>
-                        改版结果
-                    </template>
-                    <div>
-                        <Button type="primary" size="large" long @click="downloadApplovinVersion"
-                            :disabled="!ghostStudioContent">
-                            <Icon type="ios-download" />
-                            下载Applovin版
-                        </Button>
+                        <div style="margin-top:16px;">
+                            <iframe ref="iframeRef" style="width:100%;height:600px;border:1px solid #eee;"></iframe>
+                        </div>
                     </div>
                 </Card>
             </div>

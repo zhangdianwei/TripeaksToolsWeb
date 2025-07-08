@@ -14,6 +14,7 @@ const modifiedObj = reactive({
     finalHTMLContent: '' //经过修改后的html内容
 }) //修改后的内容
 
+const iframeRef = ref(null)
 
 const parsing = ref(false)
 
@@ -74,7 +75,7 @@ async function fetchByProxy(url, contentType = 'html') {
 
 function replace_al_renderHtml(html) {
     // 修复相对路径为绝对路径
-    let result = html.replace(/src="js\//g, 'src="' + serverAddress.value + 'js/');
+    let result = html.replace(/src="/g, 'src="' + serverAddress.value + '');
 
     // 替换al_renderHtml函数
     let code1 = "document.write(str.html);"
@@ -101,10 +102,12 @@ function createHiddenIframe() {
 /**
  * 监听 window message，返回移除监听的函数和内容 Promise
  */
-function waitForHtmlMessage(timeoutMs = 10000) {
+function waitForHtmlMessage() {
+    const timeoutMs = 60000;
     return new Promise((resolve, reject) => {
         let timer = null
         function handler(event) {
+            console.log('接收到iframe消息:', event)
             if (event.data && event.data.type === 'html') {
                 cleanup()
                 resolve(event.data.content)
@@ -138,6 +141,8 @@ async function parseOriginalUrl() {
         // 2. 获取原始HTML内容并处理
         let iframeHtml = await fetchByProxy(originalUrl.value, 'html')
         iframeHtml = replace_al_renderHtml(iframeHtml)
+        console.log("iframeHtml")
+        console.log(iframeHtml)
 
         // 3. 加载到 iframe
         const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(iframeHtml)
@@ -145,7 +150,7 @@ async function parseOriginalUrl() {
         console.log('iframe已加载，等待al_renderHtml调用...')
 
         // 4. 等待 window message 返回主内容
-        const htmlResult = await waitForHtmlMessage(10000)
+        const htmlResult = await waitForHtmlMessage()
         parsedRes.srcHTMLContent = htmlResult
         return true
     } catch (error) {
@@ -161,15 +166,12 @@ async function parseOriginalUrl() {
 }
 
 async function handleParse() {
-    if (!originalUrl.value) {
-        Message.warning('请输入原始链接')
-        return
-    }
-
-    // if (!SrcAssetItemHelper.value) {
-    //     Message.error('资源处理工具未初始化，无法解析资源！')
-    //     return
-    // }
+    // 重置所有相关变量
+    parsedRes.srcHTMLContent = '';
+    parsedRes.srcItems = [];
+    modifiedObj.resItems = []
+    modifiedObj.finalHTMLContent = ''
+    iframeRef.value.srcdoc = ''
 
     parsing.value = true
 
@@ -181,8 +183,14 @@ async function handleParse() {
         }
         console.log('原始URL解析完成！')
 
+        if (!SrcAssetItemHelper.value) {
+            Message.error('不支持的广告格式！');
+            console.error('不支持的广告格式！')
+            return
+        }
+
         console.log('第二步：获取原始资源项...')
-        parsedRes.srcItems = getAllOrgResourceItems()
+        parsedRes.srcItems = SrcAssetItemHelper.value.getAllSrcItems(parsedRes.srcHTMLContent);
         if (!parsedRes.srcItems) {
             console.warn('没有找到可解析的资源项')
             return
@@ -191,7 +199,12 @@ async function handleParse() {
 
         resetModifiedObj(parsedRes.srcItems)
 
-        Message.success('解析完成！')
+        if (modifiedObj.finalHTMLContent) {
+            Message.success('解析完成！')
+        }
+        else {
+            Message.error('解析失败！')
+        }
 
     } catch (error) {
         Message.error(`解析失败: ${error.message}`)
@@ -203,14 +216,14 @@ async function handleParse() {
 
 function findRangeByStack(orgStr, keyStr, seperator) {
     if (!orgStr || !keyStr || !seperator || seperator.length !== 2) {
-        console.log('参数错误: orgStr、keyStr或seperator无效')
+        console.error('参数错误: orgStr、keyStr或seperator无效')
         return null
     }
 
     // 先找到keyStr的位置
     const keyIndex = orgStr.indexOf(keyStr)
     if (keyIndex === -1) {
-        console.log(`未找到关键字: ${keyStr}`)
+        console.error(`未找到关键字: ${keyStr}`)
         return null
     }
 
@@ -253,21 +266,6 @@ function findRangeByStack(orgStr, keyStr, seperator) {
     }
 }
 
-function getAllOrgResourceItems() {
-    // 提取JSON字符串
-    const jsonStr = SrcAssetItemHelper.value.getResContent(parsedRes.srcHTMLContent);
-    console.log('提取的JSON字符串:', jsonStr.substring(0, 200) + '...')
-
-    try {
-        const jsonObj = eval(jsonStr)
-        console.log('解析成功，资源数量:', jsonObj.length)
-        return jsonObj
-    } catch (error) {
-        console.error('JSON解析失败:', error)
-        return null
-    }
-}
-
 function base64ToBinary(base64String) {
     const base64Content = base64String.replace(/^data:[^;]+;base64,/, '')
     const binaryString = atob(base64Content)
@@ -279,17 +277,119 @@ function base64ToBinary(base64String) {
 }
 
 class ParseHelperBase {
+    getAllSrcItems(html) {
+        throw new Exception("未实现");
+    }
+    setAllSrcItems(html, srcItems) {
+        throw new Exception("未实现");
+    }
+
     async reloadAllFromFileMap(srcItems, fileMap) {
         throw new Exception("未实现");
     }
     async toAllDownloadItems(srcItems) {
         throw new Exception("未实现");
     }
-    getResContent(html) {
-        throw new Exception("未实现");
+}
+
+class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
+
+    async reloadAllFromFileMap(items, fileMap) {
+        // 遍历 srcItems，根据 fileName 去 fileMap 填充 content 字段
+        for (const item of items) {
+            const fileName = item.fileName || item.src;
+            const fileMapName = fileName.replace("assets/", "");
+            if (fileMap[fileMapName]) {
+                item.content = fileMap[fileMapName];
+            }
+        }
     }
-    replaceResContent(html, str) {
-        throw new Exception("未实现");
+    async toAllDownloadItems(items) {
+        // 返回 {fileName, content, type} 列表，content 为二进制
+        const all = [];
+        for (const item of items) {
+            let fileName = item.fileName || item.src;
+            let type = item.type;
+            let content = item.content;
+            // 如果是 dataurl，转为二进制
+            if (typeof content === 'string' && content.startsWith('data:')) {
+                content = base64ToBinary(content);
+            }
+            // 如果是 json，导出字符串内容
+            if ((type === 'json' || (fileName && fileName.endsWith('.json'))) && item.json) {
+                content = new TextEncoder().encode(JSON.stringify(item.json));
+            }
+            if (content) {
+                all.push({ fileName, content, type });
+            }
+        }
+        return all;
+    }
+    getAllSrcItems(html) {
+        // 使用 findRangeByStack 定位 var CUST_ASSETS =  和 var ASSETS_64 = ，解析内容
+        function parseObjectByStack(str, key, brackets) {
+            const range = findRangeByStack(str, key, brackets);
+            if (!range) return null;
+            const code = str.substring(range.start, range.end + 1);
+            return JSON.parse(code);
+        }
+        const custAssets = parseObjectByStack(html, 'var CUST_ASSETS = ', '{}');
+        const assets64 = parseObjectByStack(html, 'var ASSETS_64 = ', '[]');
+        if (!custAssets || !assets64) return [];
+        const srcItems = [];
+        for (const fileName in custAssets) {
+            const idx = custAssets[fileName];
+            const dataurl = assets64[idx];
+            let type = 'unknown';
+            if (fileName.endsWith('.png')) type = 'image';
+            else if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) type = 'image';
+            else if (fileName.endsWith('.mp3')) type = 'audio';
+            else if (fileName.endsWith('.json')) type = 'json';
+            srcItems.push({
+                key: fileName.replace(/\.[^.]+$/, ''),
+                fileName,
+                type,
+                content: dataurl,
+                src: fileName
+            });
+        }
+        return srcItems;
+    }
+    setAllSrcItems(html, srcItems) {
+        // 反向生成 var CUST_ASSETS = ... 和 var ASSETS_64=...，并替换原有内容
+        // 1. 生成 ASSETS_64 数组和 CUST_ASSETS 索引
+        const assets64 = [];
+        const custAssets = {};
+        for (const item of srcItems) {
+            let dataurl = item.content;
+            // 如果是二进制，转为 dataurl
+            if (dataurl instanceof Uint8Array) {
+                // 仅支持 png/jpg/mp3/json
+                let mime = 'application/octet-stream';
+                if (item.type === 'image' && item.fileName.endsWith('.png')) mime = 'image/png';
+                else if (item.type === 'image' && (item.fileName.endsWith('.jpg') || item.fileName.endsWith('.jpeg'))) mime = 'image/jpeg';
+                else if (item.type === 'audio') mime = 'audio/mpeg';
+                else if (item.type === 'json') mime = 'application/json';
+                dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl));
+            }
+            let idx = assets64.indexOf(dataurl);
+            if (idx === -1) {
+                idx = assets64.length;
+                assets64.push(dataurl);
+            }
+            custAssets[item.fileName] = idx;
+        }
+        // 2. 替换 html 中 var CUST_ASSETS 和 var ASSETS_64
+        function replaceByStack(str, key, brackets, newCode) {
+            const range = findRangeByStack(str, key, brackets);
+            if (!range) return str;
+            return str.substring(0, range.start) + newCode + str.substring(range.end + 1);
+        }
+        const newCustAssets = JSON.stringify(custAssets, null, 2);
+        const newAssets64 = JSON.stringify(assets64, null, 2);
+        let html2 = replaceByStack(html, 'var CUST_ASSETS = ', '{}', newCustAssets);
+        html2 = replaceByStack(html2, 'var ASSETS_64 = ', '[]', newAssets64);
+        return html2;
     }
 }
 
@@ -304,15 +404,15 @@ class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
         return item.atlasURL || null
     }
     getMimeType(item) {
-        const base64Data = this.getBase64Data(item)
-        if (!base64Data) return null
-        const mimeMatch = base64Data.match(/data:([^;]+);base64,/)
+        const dataurl = this.getDataUrl(item)
+        if (!dataurl) return null
+        const mimeMatch = dataurl.match(/data:([^;]+);base64,/)
         return mimeMatch ? mimeMatch[1] : null
     }
     getBinaryContent(item) {
-        const base64Data = this.getBase64Data(item)
-        if (!base64Data) return null
-        return base64ToBinary(base64Data)
+        const dataurl = this.getDataUrl(item)
+        if (!dataurl) return null
+        return base64ToBinary(dataurl)
     }
     getFileName(item) {
         const mimeType = this.getMimeType(item)
@@ -333,7 +433,7 @@ class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
         return `${key}.unknown`
     }
     getAtlasData(item) {
-        const atlasBase64 = this.getAtlasDataBase64Data(item)
+        const atlasBase64 = item.atlasURL
         if (!atlasBase64) return null
         try {
             return atob(atlasBase64.replace('data:text/json;base64,', ''))
@@ -373,39 +473,13 @@ class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
             try {
                 const atlasJson = JSON.parse(atlasData)
                 if (atlasJson && Array.isArray(atlasJson.frames) && item.textureURL) {
-                    const image = await new Promise((resolve, reject) => {
-                        const img = new window.Image()
-                        img.onload = () => resolve(img)
-                        img.onerror = reject
-                        img.src = item.textureURL
-                    })
-                    for (const frameObj of atlasJson.frames) {
-                        const frame = frameObj.frame
-                        const filename = frameObj.filename
-                        const spriteSourceSize = frameObj.spriteSourceSize
-                        const sourceSize = frameObj.sourceSize
-                        const canvas = document.createElement('canvas')
-                        canvas.width = sourceSize.w
-                        canvas.height = sourceSize.h
-                        const ctx = canvas.getContext('2d')
-                        ctx.clearRect(0, 0, canvas.width, canvas.height)
-                        ctx.fillStyle = 'rgba(0,0,0,0)'
-                        ctx.fillRect(0, 0, canvas.width, canvas.height)
-                        ctx.drawImage(
-                            image,
-                            frame.x, frame.y, frame.w, frame.h,
-                            spriteSourceSize.x, spriteSourceSize.y, frame.w, frame.h
-                        )
-                        const dataUrl = canvas.toDataURL('image/png')
-                        const base64Content = dataUrl.replace(/^data:[^;]+;base64,/, '')
-                        const binaryString = atob(base64Content)
-                        const bytes = new Uint8Array(binaryString.length)
-                        for (let i = 0; i < binaryString.length; i++) {
-                            bytes[i] = binaryString.charCodeAt(i) & 0xff
-                        }
+                    // 用 AtlasHelper.extractFrames 替代原有逐帧 canvas 逻辑
+                    const frames = await AtlasHelper.extractFrames(atlasJson, item.textureURL, key, 'dataURL')
+                    for (const frame of frames) {
+                        // 转 Uint8Array，保持原有 items 结构
                         items.push({
-                            fileName: `atlas/${key}/${filename}`,
-                            content: bytes,
+                            fileName: `atlas/${key}/${frame.fileName}`,
+                            content: base64ToBinary(frame.content),
                             type: 'image/png'
                         })
                     }
@@ -430,7 +504,7 @@ class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
     async toDownloadItems(item) {
         const type = this.getType(item)
         if (type === 'atlas') {
-            return await this.toDownloadItemAtlas(item)
+            return await AtlasHelper.toDownloadItems(item.key, item.atlasURL, item.textureURL)
         } else {
             const downloadItem = this.toDownloadItem(item)
             if (downloadItem) {
@@ -449,7 +523,7 @@ class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
         if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB'
         return (size / (1024 * 1024)).toFixed(1) + ' MB'
     }
-    getBase64Data(item) {
+    getDataUrl(item) {
         if (item.urls && item.urls.length > 0) {
             return item.urls[0]
         }
@@ -458,64 +532,35 @@ class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
         }
         return null
     }
-    setBase64Data(item, content, extra_content) {
-        function toDataUrl(type, data) {
-            if (typeof data === 'string') {
-                if (data.startsWith('data:')) return data;
-                if (type.startsWith('image/')) return `data:${type};base64,${data}`;
-                if (type.startsWith('audio/')) return `data:${type};base64,${data}`;
-                if (type === 'text/json') return `data:text/json;base64,${btoa(unescape(encodeURIComponent(data)))}`;
-                return data;
-            } else if (data instanceof Uint8Array) {
-                let binary = '';
-                for (let i = 0; i < data.length; i++) binary += String.fromCharCode(data[i]);
-                const base64 = btoa(binary);
-                if (type.startsWith('image/')) return `data:${type};base64,${base64}`;
-                if (type.startsWith('audio/')) return `data:${type};base64,${base64}`;
-                if (type === 'text/json') return `data:text/json;base64,${base64}`;
-                return base64;
-            }
-            return data;
-        }
+    setDataUrl(item, content_dataurl, extra_content_dataurl) {
         const type = this.getType(item);
         if (type === 'atlas') {
-            if (content) item.atlasURL = toDataUrl('text/json', content);
-            if (extra_content) item.textureURL = toDataUrl('image/png', extra_content);
+            if (content_dataurl) item.atlasURL = content_dataurl;
+            if (extra_content_dataurl) item.textureURL = extra_content_dataurl;
         } else if (type === 'audio') {
-            if (content) item.urls = [toDataUrl('audio/mp3', content)];
+            if (content_dataurl) item.urls = [content_dataurl];
         } else if (type === 'image') {
-            const mimeType = this.getMimeType(item) || 'image/png';
-            if (content) item.url = toDataUrl(mimeType, content);
+            if (content_dataurl) item.url = content_dataurl;
         } else {
-            if (content) item.url = content;
+            if (content_dataurl) item.url = content_dataurl;
         }
     }
     async reloadAllFromFileMap(items, fileMap) {
         for (const item of items) {
             if (item.type === 'atlas') {
-                const key = item.key
-                const texPath = `atlas_src/${key}_texture.png`
-                const jsonPath = `atlas_src/${key}_atlas.json`
-                let jsonContent = fileMap[jsonPath] || null;
-                let textureContent = fileMap[texPath] || null;
-                if (jsonContent) {
-                    try {
-                        const atlasJson = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent
-                        if (atlasJson && Array.isArray(atlasJson.frames)) {
-                            const composed = await composeAtlasTextureFromFrames(atlasJson, key, fileMap, texPath)
-                            if (composed) {
-                                textureContent = composed
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('atlas大图合成失败', e)
+                try {
+                    const composed = await AtlasHelper.composeFromFileMap(item.key, item.atlasURL, fileMap);
+                    if (composed && composed.json && composed.texture) {
+                        this.setDataUrl(item, composed.json, composed.texture);
                     }
+                } catch (e) {
+                    console.warn('atlas大图合成失败', e)
                 }
-                this.setBase64Data(item, jsonContent, textureContent)
+
             } else {
                 const fileName = this.getFileName(item)
                 if (fileMap[fileName]) {
-                    this.setBase64Data(item, fileMap[fileName])
+                    this.setDataUrl(item, fileMap[fileName])
                 }
             }
         }
@@ -528,58 +573,186 @@ class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
         }
         return all
     }
-    getResContent(html) {
+    getAllSrcItems(html) {
         const range = findRangeByStack(html, 'playableAssets:', '[]');
-        if (!range) return '';
-        return html.substring(range.start, range.end + 1);
+        if (!range) return [];
+        const jsonStr = html.substring(range.start, range.end + 1);
+        return eval(jsonStr);
     }
-    replaceResContent(html, str) {
+    setAllSrcItems(html, srcItems) {
         const range = findRangeByStack(html, 'playableAssets:', '[]');
         if (!range) return html;
+        const str = JSON.stringify(srcItems)
         return html.substring(0, range.start) + str + html.substring(range.end + 1);
     }
 }
 
 const SrcAssetItemHelper = computed(() => {
-    return new ParseHelper_Applovin_PhaserEditor()
+    if (parsedRes.srcHTMLContent.indexOf("playableAssets:") >= 0) {
+        return new ParseHelper_Applovin_PhaserEditor()
+    }
+    else if (parsedRes.srcHTMLContent.indexOf("var CUST_ASSETS = ") >= 0) {
+        return new ParseHelper_Applovin_CreateJS()
+    }
+    else {
+        return null;
+    }
 })
 
-async function composeAtlasTextureFromFrames(atlasJson, key, fileMap, texPath) {
-    if (!atlasJson || !Array.isArray(atlasJson.frames) || atlasJson.frames.length === 0) return null;
+// AtlasHelper: Web 环境下基于 canvas 实现
+const AtlasHelper = {
 
-    let maxW = 0, maxH = 0;
-    for (const frameObj of atlasJson.frames) {
-        const frame = frameObj.frame;
-        if (frame.x + frame.w > maxW) maxW = frame.x + frame.w;
-        if (frame.y + frame.h > maxH) maxH = frame.y + frame.h;
-    }
-    if (maxW === 0 || maxH === 0) return null;
+    async toDownloadItems(atlasFileName, atlasDataUrl, textureDataUrl) {
+        let items = [
+            {
+                fileName: `atlas_src/${atlasFileName}_atlas.json`,
+                content: base64ToBinary(atlasDataUrl),
+                type: 'application/json'
+            },
+            {
+                fileName: `atlas_src/${atlasFileName}_texture.png`,
+                content: base64ToBinary(textureDataUrl),
+                type: 'image/png'
+            }
+        ];
 
-    const canvas = document.createElement('canvas');
-    canvas.width = maxW;
-    canvas.height = maxH;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'rgba(0,0,0,0)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const frames = await this.extractFrames(atlasFileName, atlasDataUrl, textureDataUrl);
+        items.push(...frames);
 
-    for (const frameObj of atlasJson.frames) {
-        const frame = frameObj.frame;
-        const filename = frameObj.filename;
-        let imgData = fileMap[`atlas/${key}/${filename}`] || fileMap[filename];
-        if (!imgData) continue;
-        await new Promise((resolve, reject) => {
-            const img = new window.Image();
-            img.onload = () => {
-                ctx.drawImage(img, 0, 0, img.width, img.height, frame.x, frame.y, frame.w, frame.h);
-                resolve();
-            };
-            img.onerror = reject;
-            img.src = imgData;
-        });
-    }
-    return canvas.toDataURL('image/png');
-}
+        return items;
+    },
+
+    formatAtlasJson(atlasJson) {
+        let newAtlasJson = {};
+        newAtlasJson.meta = atlasJson.meta;
+
+        newAtlasJson.frames = atlasJson.frames;
+        if (!Array.isArray(atlasJson.frames) && typeof atlasJson.frames === 'object' && atlasJson.frames !== null) {
+            // 兼容对象格式，补充 filename 字段
+            newAtlasJson.frames = Object.entries(atlasJson.frames).map(([key, value]) => ({ ...value, filename: key }));
+        }
+        return newAtlasJson;
+    },
+
+    async extractFrames(atlasFileName, atlasData, textureImg) {
+        // 支持 dataURL 格式的 atlasData
+        // 假设 atlasData 必为 dataURL，直接提取 base64 并解码
+        const base64 = atlasData.split(',')[1] || '';
+
+        let atlasJson = JSON.parse(atob(base64));
+        atlasJson = this.formatAtlasJson(atlasJson);
+
+        // 支持 dataURL 格式的 textureImg
+        let img;
+        try {
+            img = await new Promise((resolve, reject) => {
+                const i = new window.Image();
+                i.onload = () => resolve(i);
+                i.onerror = reject;
+                i.src = textureImg;
+            });
+        } catch (e) {
+            console.error('AtlasHelper.extractFrames: 图片加载失败', e);
+            return [];
+        }
+        const items = [];
+
+        let framesArr = atlasJson.frames;
+
+        for (const frameObj of framesArr) {
+            const frame = frameObj.frame;
+            const filename = frameObj.filename;
+            const spriteSourceSize = frameObj.spriteSourceSize || { x: 0, y: 0 };
+            const sourceSize = frameObj.sourceSize;
+            const canvas = document.createElement('canvas');
+            canvas.width = sourceSize.w;
+            canvas.height = sourceSize.h;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'rgba(0,0,0,0)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(
+                img,
+                frame.x, frame.y, frame.w, frame.h,
+                spriteSourceSize.x, spriteSourceSize.y, frame.w, frame.h
+            );
+            const dataUrl = canvas.toDataURL('image/png');
+            items.push({
+                fileName: `atlas/${atlasFileName}/${filename}`,
+                content: base64ToBinary(dataUrl),
+                type: 'image/png'
+            });
+        }
+        return items;
+    },
+
+    async composeFromFileMap(atlasFileName, atlasDataUrl, fileMap) {
+        // 1. 解析 atlasJson
+        const base64 = atlasDataUrl.split(',')[1] || '';
+        let atlasJson = JSON.parse(atob(base64));
+        atlasJson = this.formatAtlasJson(atlasJson);
+        // 2. 收集所有帧图片
+        const images = [];
+        let framesArr = atlasJson.frames;
+        for (const frameObj of framesArr) {
+            const filename = frameObj.filename;
+            const fullName = `atlas/${atlasFileName}/${filename}`;
+            const dataUrl = fileMap[fullName] || fileMap[filename];
+            if (!dataUrl) throw new Error(`缺少图片：${fullName}`);
+            images.push({ filename, dataUrl });
+        }
+        // 3. 载入所有图片
+        const loadedImgs = await Promise.all(images.map(imgInfo => new Promise((resolve, reject) => {
+            const i = new window.Image();
+            i.onload = () => resolve({ ...imgInfo, width: i.width, height: i.height, img: i });
+            i.onerror = reject;
+            i.src = imgInfo.dataUrl;
+        })));
+        // 4. 自动计算大图尺寸与排列（n/2行 n/2列，向上取整）
+        const n = loadedImgs.length;
+        const cols = Math.ceil(Math.sqrt(n));
+        const rows = Math.ceil(n / cols);
+        // 取最大宽高做格子
+        const cellW = Math.max(...loadedImgs.map(i => i.width));
+        const cellH = Math.max(...loadedImgs.map(i => i.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = cols * cellW;
+        canvas.height = rows * cellH;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'rgba(0,0,0,0)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // 5. 依次绘制并修正 frame 参数
+        const newAtlasJson = JSON.parse(JSON.stringify(atlasJson));
+        let idx = 0;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (idx >= loadedImgs.length) break;
+                const imgInfo = loadedImgs[idx];
+                const x = c * cellW;
+                const y = r * cellH;
+                ctx.drawImage(imgInfo.img, x, y, imgInfo.width, imgInfo.height);
+                // 修正对应 frame
+                const frameObj = newAtlasJson.frames[idx];
+                frameObj.frame.x = x;
+                frameObj.frame.y = y;
+                frameObj.frame.w = imgInfo.width;
+                frameObj.frame.h = imgInfo.height;
+                frameObj.spriteSourceSize = { x: 0, y: 0, w: imgInfo.width, h: imgInfo.height };
+                frameObj.sourceSize = { w: imgInfo.width, h: imgInfo.height };
+                frameObj.rotated = false;
+                frameObj.trimmed = false;
+                idx++;
+            }
+        }
+        // 6. 生成大图dataurl和新json
+        const textureDataUrl = canvas.toDataURL('image/webp', 0.5);
+        const jsonStr = JSON.stringify(newAtlasJson);
+        const jsonDataUrl = 'data:text/json;base64,' + btoa(unescape(encodeURIComponent(jsonStr)));
+        return { json: jsonDataUrl, texture: textureDataUrl };
+    },
+
+};
 
 async function downloadAsFile(content, filename, mimeType = 'text/plain') {
     if (!content) {
@@ -614,7 +787,7 @@ function downloadSrcHTMLContent() {
 }
 
 function downloadDstHTMLContent() {
-    downloadAsFile(finalHTMLContent.value, 'index_dst.html', 'text/html')
+    downloadAsFile(modifiedObj.finalHTMLContent, 'index_dst.html', 'text/html')
 }
 
 async function downloadSrcResources() {
@@ -765,8 +938,10 @@ async function buildFileMapFromUpload(fileOrEvent) {
 
 function resetModifiedObj(resItems) {
     modifiedObj.resItems = resItems;
-    const jsonStr = JSON.stringify(modifiedObj.resItems)
-    modifiedObj.finalHTMLContent = SrcAssetItemHelper.value.replaceResContent(parsedRes.srcHTMLContent, jsonStr);
+    if (!modifiedObj.resItems || modifiedObj.resItems.length == 0) {
+        return;
+    }
+    modifiedObj.finalHTMLContent = SrcAssetItemHelper.value.setAllSrcItems(parsedRes.srcHTMLContent, modifiedObj.resItems);
     iframeRef.value.srcdoc = modifiedObj.finalHTMLContent
 }
 
@@ -774,6 +949,7 @@ async function handleUpload(fileOrEvent) {
     // 1. 解析上传内容为 { 路径: 文件内容(base64/文本/Uint8Array) }
     const fileMap = await buildFileMapFromUpload(fileOrEvent)
     if (!fileMap) return false
+    console.log(fileMap)
 
     const resItems = JSON.parse(JSON.stringify(modifiedObj.resItems));
     await SrcAssetItemHelper.value.reloadAllFromFileMap(resItems, fileMap)
@@ -798,9 +974,6 @@ function uploadModifiedResource() {
     });
     input.click();
 }
-
-
-const iframeRef = ref(null)
 
 </script>
 

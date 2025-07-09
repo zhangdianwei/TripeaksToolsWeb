@@ -33,7 +33,7 @@ const serverAddress = computed(() => {
 
 async function fetchByProxy(url, contentType = 'html') {
     const proxyServices = [];
-    proxyServices.push(url.replace("playables.safedk.com", "localhost:8992/queryCommon_playables_safedk_com"));
+    proxyServices.push(url.replace("playables.safedk.com", "10.10.31.17:8992/queryCommon_playables_safedk_com"));
     proxyServices.push(`https://thingproxy.freeboard.io/fetch/${url}`)
     proxyServices.push(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`)
     proxyServices.push(`https://corsproxy.io/?${encodeURIComponent(url)}`)

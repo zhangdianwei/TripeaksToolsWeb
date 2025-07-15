@@ -433,6 +433,88 @@ class ParseHelperBase {
     }
 }
 
+class ParseHelper_Applovin_CocosCreatorSuperHtml extends ParseHelperBase {
+
+    async reloadAllFromFileMap(items, fileMap) {
+        // 遍历 srcItems，根据 fileName 去 fileMap 填充 content 字段
+        for (const item of items) {
+            const fileName = item.fileName || item.src;
+            const fileMapName = fileName.replace("res/", "");
+            if (fileMap[fileMapName]) {
+                if (item.type === 'json' || item.type === 'unknown') {
+                    item.content = atob(fileMap[fileMapName].split(',')[1])
+                }
+                else {
+                    item.content = fileMap[fileMapName];
+                }
+            }
+        }
+    }
+
+    async toAllDownloadItems(items) {
+        // 返回 {fileName, content, type} 列表，content 为二进制
+        const all = [];
+        for (const item of items) {
+            let fileName = item.fileName || item.src;
+            fileName = fileName.replace("res/", "");
+            let type = item.type;
+            let content = item.content;
+            try {
+                content = base64ToBinary(content);
+            }
+            catch (e) {
+            }
+            if (content) {
+                all.push({ fileName, content, type });
+            }
+        }
+        return all;
+    }
+
+    getAllSrcItems(html) {
+        // 使用 parseObjectByStack 定位 window.__res=，解析内容
+        const range = findRangeByStack(html, "window.__res=", "{}");
+        if (!range) return [];
+        const code = html.substring(range.start, range.end + 1);
+        console.log(code);
+        let res = null;
+        eval(`res=${code}`);
+        if (!res) return [];
+        const srcItems = [];
+        for (const fileName in res) {
+            const dataurl = res[fileName];
+            let type = guessFileType(fileName);
+            srcItems.push({
+                key: fileName.replace(/\.[^.]+$/, ''),
+                fileName,
+                type,
+                content: dataurl,
+                src: fileName,
+                typeTag: 'COCOS_CREATOR',
+            });
+        }
+        return srcItems;
+    }
+
+    setAllSrcItems(html, srcItems) {
+        // 生成 window.res 对象
+        const res = {};
+        for (const item of srcItems) {
+            let dataurl = item.content;
+            if (dataurl instanceof Uint8Array) {
+                let mime = guessMimeType(item.type, item.fileName);
+                dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl));
+            }
+
+            res[item.fileName] = dataurl;
+        }
+        // 替换 HTML 中的 window.res
+        const newRes = JSON.stringify(res);
+        let html2 = replaceByStack(html, 'window.__res=', '{}', newRes);
+        return html2;
+    }
+}
+
 class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
 
     async reloadAllFromFileMap(items, fileMap) {
@@ -833,14 +915,18 @@ class ParseHelper_Applovin_PhaserEditor extends ParseHelperBase {
 }
 
 const SrcAssetItemHelper = computed(() => {
-    if (parsedRes.srcHTMLContent.indexOf("playableAssets:") >= 0) {
+    const html = parsedRes.srcHTMLContent;
+    if (html.indexOf("playableAssets:") >= 0) {
         return new ParseHelper_Applovin_PhaserEditor()
     }
-    else if (parsedRes.srcHTMLContent.indexOf("var CUST_ASSETS = ") >= 0) {
+    else if (html.indexOf("var CUST_ASSETS = ") >= 0) {
         return new ParseHelper_Applovin_CreateJS()
     }
-    else if (parsedRes.srcHTMLContent.indexOf("window.res=") >= 0) {
+    else if (html.indexOf("window.res=") >= 0) {
         return new ParseHelper_Applovin_CocosCreator()
+    }
+    else if (html.indexOf("window.__res=") >= 0) {
+        return new ParseHelper_Applovin_CocosCreatorSuperHtml()
     }
     else {
         return null;

@@ -165,13 +165,112 @@ async function parseOriginalUrl() {
     }
 }
 
-async function handleParse() {
-    // 重置所有相关变量
+function resetAllContent() {
     parsedRes.srcHTMLContent = '';
     parsedRes.srcItems = [];
     modifiedObj.resItems = []
     modifiedObj.finalHTMLContent = ''
     iframeRef.value.srcdoc = ''
+}
+
+async function parseUploadFile() {
+    try {
+        // 创建文件选择器
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.html';
+        input.style.display = 'none';
+        document.body.appendChild(input);
+
+        // 等待用户选择文件
+        const file = await new Promise((resolve, reject) => {
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    resolve(file);
+                } else {
+                    reject(new Error('未选择文件'));
+                }
+            };
+            input.oncancel = () => reject(new Error('用户取消选择'));
+            input.click();
+        });
+
+        // 清理DOM
+        document.body.removeChild(input);
+
+        // 检查文件类型
+        if (!file.name.endsWith('.html')) {
+            Message.error('请选择HTML文件');
+            return false;
+        }
+
+        // 读取文件内容
+        const fileContent = await file.text();
+        if (!fileContent || fileContent.trim() === '') {
+            Message.error('文件内容为空');
+            return false;
+        }
+
+        parsedRes.srcHTMLContent = fileContent;
+
+        // 设置 originalUrl 为文件路径
+        originalUrl.value = `file://${file.name}`;
+
+        return true;
+    } catch (error) {
+        console.error('文件解析失败:', error);
+        Message.error(`文件解析失败: ${error.message}`);
+        return false;
+    }
+}
+
+async function handleParseFile() {
+    resetAllContent();
+
+    parsing.value = true
+
+    try {
+        console.log('第一步：解析上传的文件...')
+        const uploadSuccess = await parseUploadFile();
+        if (!uploadSuccess || !parsedRes.srcHTMLContent) {
+            return;
+        }
+        console.log('上传的文件解析完成！')
+
+        if (!SrcAssetItemHelper.value) {
+            Message.error('不支持的广告格式！');
+            console.error('不支持的广告格式！')
+            return
+        }
+
+        console.log('第二步：获取原始资源项...')
+        parsedRes.srcItems = SrcAssetItemHelper.value.getAllSrcItems(parsedRes.srcHTMLContent);
+        if (!parsedRes.srcItems) {
+            console.warn('没有找到可解析的资源项')
+            return
+        }
+        console.log(`找到 ${parsedRes.srcItems.length} 个原始资源项`)
+
+        resetModifiedObj(parsedRes.srcItems)
+
+        if (modifiedObj.finalHTMLContent) {
+            Message.success('解析完成！')
+        }
+        else {
+            Message.error('解析失败！')
+        }
+
+    } catch (error) {
+        Message.error(`解析失败: ${error.message}`)
+        console.error('详细错误:', error)
+    } finally {
+        parsing.value = false
+    }
+}
+
+async function handleParse() {
+    resetAllContent();
 
     parsing.value = true
 
@@ -1035,14 +1134,20 @@ function uploadModifiedResource() {
                         原始链接解析-1
                     </template>
                     <div>
-                        <Row :gutter="12">
-                            <Col :span="20">
+                        <Row :gutter="2">
+                            <Col :span="16">
                             <Input v-model="originalUrl" placeholder="请输入原始链接" size="large" />
                             </Col>
-                            <Col :span="4">
+                            <Col>
                             <Button type="primary" @click="handleParse" :loading="parsing" :disabled="!originalUrl"
                                 size="large" long>
-                                解析
+                                解析URL
+                            </Button>
+                            </Col>
+                            <Col>
+                            <Button type="primary" @click="handleParseFile" :loading="parsing" :disabled="!originalUrl"
+                                size="large" long>
+                                解析文件
                             </Button>
                             </Col>
                         </Row>

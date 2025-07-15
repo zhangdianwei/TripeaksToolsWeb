@@ -477,8 +477,7 @@ class ParseHelper_Applovin_CocosCreatorSuperHtml extends ParseHelperBase {
         if (!range) return [];
         const code = html.substring(range.start, range.end + 1);
         console.log(code);
-        let res = null;
-        eval(`res=${code}`);
+        let res = (new Function(`return ${code}`))();
         if (!res) return [];
         const srcItems = [];
         for (const fileName in res) {
@@ -559,8 +558,7 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
         if (!range) return [];
         const code = html.substring(range.start, range.end + 1);
         console.log(code);
-        let res = null;
-        eval(`res=${code}`);
+        let res = (new Function(`return ${code}`))();
         if (!res) return [];
         const srcItems = [];
         for (const fileName in res) {

@@ -365,6 +365,21 @@ function findRangeByStack(orgStr, keyStr, seperator) {
     }
 }
 
+// 通用：根据关键字和括号提取对象
+function parseObjectByStack(str, key, brackets) {
+    const range = findRangeByStack(str, key, brackets);
+    if (!range) return null;
+    const code = str.substring(range.start, range.end + 1);
+    return JSON.parse(code);
+}
+
+// 通用：根据关键字和括号替换对象
+function replaceByStack(str, key, brackets, newCode) {
+    const range = findRangeByStack(str, key, brackets);
+    if (!range) return str;
+    return str.substring(0, range.start) + newCode + str.substring(range.end + 1);
+}
+
 function base64ToBinary(base64String) {
     const base64Content = base64String.replace(/^data:[^;]+;base64,/, '')
     const binaryString = atob(base64Content)
@@ -374,6 +389,33 @@ function base64ToBinary(base64String) {
     }
     return bytes
 }
+
+// 通用：根据文件名后缀猜测资源类型
+function guessFileType(fileName) {
+    if (!fileName) return 'unknown';
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return 'image';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image';
+    if (lower.endsWith('.mp3')) return 'audio';
+    if (lower.endsWith('.json')) return 'json';
+    return 'unknown';
+}
+
+// 通用：根据 type 和文件名后缀猜测 mime 类型
+function guessMimeType(type, fileName) {
+    if (type === 'image') {
+        if (fileName && fileName.toLowerCase().endsWith('.png')) return 'image/png';
+        if (fileName && (fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg'))) return 'image/jpeg';
+    }
+    if (type === 'audio') return 'audio/mpeg';
+    if (type === 'json') return 'application/json';
+    return 'application/octet-stream';
+}
+
+function stripMimePrefix(str) {
+    return str.replace(/^data:[^;]+;base64,/, '');
+}
+
 
 class ParseHelperBase {
     getAllSrcItems(html) {
@@ -390,6 +432,89 @@ class ParseHelperBase {
         throw new Exception("未实现");
     }
 }
+
+class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
+
+    async reloadAllFromFileMap(items, fileMap) {
+        // 遍历 srcItems，根据 fileName 去 fileMap 填充 content 字段
+        for (const item of items) {
+            const fileName = item.fileName || item.src;
+            const fileMapName = fileName.replace("res/", "");
+            if (fileMap[fileMapName]) {
+                if (item.type === 'json') {
+                    item.content = atob(fileMap[fileMapName].split(',')[1])
+                }
+                else {
+                    item.content = stripMimePrefix(fileMap[fileMapName]);
+                }
+            }
+        }
+    }
+
+    async toAllDownloadItems(items) {
+        // 返回 {fileName, content, type} 列表，content 为二进制
+        const all = [];
+        for (const item of items) {
+            let fileName = item.fileName || item.src;
+            fileName = fileName.replace("res/", "");
+            let type = item.type;
+            let content = item.content;
+            try {
+                content = base64ToBinary(content);
+            }
+            catch (e) {
+            }
+            if (content) {
+                all.push({ fileName, content, type });
+            }
+        }
+        return all;
+    }
+
+    getAllSrcItems(html) {
+        // 使用 parseObjectByStack 定位 window.res=，解析内容
+        const range = findRangeByStack(html, "window.res=", "{}");
+        if (!range) return [];
+        const code = html.substring(range.start, range.end + 1);
+        console.log(code);
+        let res = null;
+        eval(`res=${code}`);
+        if (!res) return [];
+        const srcItems = [];
+        for (const fileName in res) {
+            const dataurl = res[fileName];
+            let type = guessFileType(fileName);
+            srcItems.push({
+                key: fileName.replace(/\.[^.]+$/, ''),
+                fileName,
+                type,
+                content: dataurl,
+                src: fileName,
+                typeTag: 'COCOS_CREATOR',
+            });
+        }
+        return srcItems;
+    }
+
+    setAllSrcItems(html, srcItems) {
+        // 生成 window.res 对象
+        const res = {};
+        for (const item of srcItems) {
+            let dataurl = item.content;
+            if (dataurl instanceof Uint8Array) {
+                let mime = guessMimeType(item.type, item.fileName);
+                dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl));
+            }
+
+            res[item.fileName] = dataurl;
+        }
+        // 替换 HTML 中的 window.res
+        const newRes = JSON.stringify(res);
+        let html2 = replaceByStack(html, 'window.res=', '{}', newRes);
+        return html2;
+    }
+}
+
 
 class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
 
@@ -425,45 +550,30 @@ class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
         return all;
     }
     getAllSrcItems(html) {
-        // 使用 findRangeByStack 定位 var CUST_ASSETS =  和 var ASSETS_64 = ，解析内容
-        function parseObjectByStack(str, key, brackets) {
-            const range = findRangeByStack(str, key, brackets);
-            if (!range) return null;
-            const code = str.substring(range.start, range.end + 1);
-            return JSON.parse(code);
-        }
+        // 使用 parseObjectByStack 定位 var CUST_ASSETS =  和 var ASSETS_64 = ，解析内容
         const custAssets = parseObjectByStack(html, 'var CUST_ASSETS = ', '{}');
         const assets64 = parseObjectByStack(html, 'var ASSETS_64 = ', '[]');
-        if (!custAssets || !assets64) return [];
         const srcItems = [];
-        for (const fileName in custAssets) {
-            const idx = custAssets[fileName];
-            const dataurl = assets64[idx];
-            let type = 'unknown';
-            if (fileName.endsWith('.png')) type = 'image';
-            else if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) type = 'image';
-            else if (fileName.endsWith('.mp3')) type = 'audio';
-            else if (fileName.endsWith('.json')) type = 'json';
-            srcItems.push({
-                key: fileName.replace(/\.[^.]+$/, ''),
-                fileName,
-                type,
-                content: dataurl,
-                src: fileName,
-                typeTag: 'CUST_ASSETS',
-            });
+        if (custAssets && assets64) {
+            for (const fileName in custAssets) {
+                const idx = custAssets[fileName];
+                const dataurl = assets64[idx];
+                let type = guessFileType(fileName);
+                srcItems.push({
+                    key: fileName.replace(/\.[^.]+$/, ''),
+                    fileName,
+                    type,
+                    content: dataurl,
+                    src: fileName,
+                    typeTag: 'CUST_ASSETS',
+                });
+            }
         }
-
         const assets = parseObjectByStack(html, 'var ASSETS=', '{}');
         if (assets) {
             for (const fileName in assets) {
                 const dataurl = assets[fileName];
-                let type = 'unknown';
-                if (fileName.endsWith('.png')) type = 'image';
-                else if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) type = 'image';
-                else if (fileName.endsWith('.mp3')) type = 'audio';
-                else if (fileName.endsWith('.json')) type = 'json';
-
+                let type = guessFileType(fileName);
                 srcItems.push({
                     key: fileName.replace(/\.[^.]+$/, ''),
                     fileName,
@@ -474,16 +584,10 @@ class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
                 });
             }
         }
-
         return srcItems;
     }
     setAllSrcItems(html, srcItems) {
-        function replaceByStack(str, key, brackets, newCode) {
-            const range = findRangeByStack(str, key, brackets);
-            if (!range) return str;
-            return str.substring(0, range.start) + newCode + str.substring(range.end + 1);
-        }
-
+        // 反向生成 var CUST_ASSETS = ... 和 var ASSETS_64=...，并替换原有内容
         // 按 typeTag 分组
         const custAssetsItems = srcItems.filter(item => item.typeTag === 'CUST_ASSETS' || !item.typeTag);
         const assetsItems = srcItems.filter(item => item.typeTag === 'ASSETS');
@@ -493,12 +597,9 @@ class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
         const custAssets = {};
         for (const item of custAssetsItems) {
             let dataurl = item.content;
+            // 如果是二进制，转为 dataurl
             if (dataurl instanceof Uint8Array) {
-                let mime = 'application/octet-stream';
-                if (item.type === 'image' && item.fileName.endsWith('.png')) mime = 'image/png';
-                else if (item.type === 'image' && (item.fileName.endsWith('.jpg') || item.fileName.endsWith('.jpeg'))) mime = 'image/jpeg';
-                else if (item.type === 'audio') mime = 'audio/mpeg';
-                else if (item.type === 'json') mime = 'application/json';
+                let mime = guessMimeType(item.type, item.fileName);
                 dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl));
             }
             let idx = assets64.indexOf(dataurl);
@@ -513,12 +614,9 @@ class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
         const assets = {};
         for (const item of assetsItems) {
             let dataurl = item.content;
+            // 如果是二进制，转为 dataurl
             if (dataurl instanceof Uint8Array) {
-                let mime = 'application/octet-stream';
-                if (item.type === 'image' && item.fileName.endsWith('.png')) mime = 'image/png';
-                else if (item.type === 'image' && (item.fileName.endsWith('.jpg') || item.fileName.endsWith('.jpeg'))) mime = 'image/jpeg';
-                else if (item.type === 'audio') mime = 'audio/mpeg';
-                else if (item.type === 'json') mime = 'application/json';
+                let mime = guessMimeType(item.type, item.fileName);
                 dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl));
             }
             assets[item.fileName] = dataurl;
@@ -740,6 +838,9 @@ const SrcAssetItemHelper = computed(() => {
     }
     else if (parsedRes.srcHTMLContent.indexOf("var CUST_ASSETS = ") >= 0) {
         return new ParseHelper_Applovin_CreateJS()
+    }
+    else if (parsedRes.srcHTMLContent.indexOf("window.res=") >= 0) {
+        return new ParseHelper_Applovin_CocosCreator()
     }
     else {
         return null;

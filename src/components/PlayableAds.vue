@@ -4,7 +4,7 @@ import { Card, Input, Button, Upload, Icon, Message, Row, Col, Alert, Exception 
 import JSZip from 'jszip'
 
 
-const originalUrl = ref('https://playables.safedk.com/74616804a7dc29147dfb0afe122a9fd2/67518f8cfdac53eb0cf4ce54f52caec2/ad.html')
+const originalUrl = ref('https://playables.safedk.com/74616804a7dc29147dfb0afe122a9fd2/acff7c96e47ddad9066726f59be70a5b/ad.html')
 const parsedRes = reactive({
     srcHTMLContent: '', // 真正可玩的html内容
     srcItems: [],
@@ -350,21 +350,51 @@ class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
                 fileName,
                 type,
                 content: dataurl,
-                src: fileName
+                src: fileName,
+                typeTag: 'CUST_ASSETS',
             });
         }
+
+        const assets = parseObjectByStack(html, 'var ASSETS=', '{}');
+        if (assets) {
+            for (const fileName in assets) {
+                const dataurl = assets[fileName];
+                let type = 'unknown';
+                if (fileName.endsWith('.png')) type = 'image';
+                else if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) type = 'image';
+                else if (fileName.endsWith('.mp3')) type = 'audio';
+                else if (fileName.endsWith('.json')) type = 'json';
+
+                srcItems.push({
+                    key: fileName.replace(/\.[^.]+$/, ''),
+                    fileName,
+                    type,
+                    content: dataurl,
+                    src: fileName,
+                    typeTag: 'ASSETS',
+                });
+            }
+        }
+
         return srcItems;
     }
     setAllSrcItems(html, srcItems) {
-        // 反向生成 var CUST_ASSETS = ... 和 var ASSETS_64=...，并替换原有内容
-        // 1. 生成 ASSETS_64 数组和 CUST_ASSETS 索引
+        function replaceByStack(str, key, brackets, newCode) {
+            const range = findRangeByStack(str, key, brackets);
+            if (!range) return str;
+            return str.substring(0, range.start) + newCode + str.substring(range.end + 1);
+        }
+
+        // 按 typeTag 分组
+        const custAssetsItems = srcItems.filter(item => item.typeTag === 'CUST_ASSETS' || !item.typeTag);
+        const assetsItems = srcItems.filter(item => item.typeTag === 'ASSETS');
+
+        // 处理 CUST_ASSETS + ASSETS_64
         const assets64 = [];
         const custAssets = {};
-        for (const item of srcItems) {
+        for (const item of custAssetsItems) {
             let dataurl = item.content;
-            // 如果是二进制，转为 dataurl
             if (dataurl instanceof Uint8Array) {
-                // 仅支持 png/jpg/mp3/json
                 let mime = 'application/octet-stream';
                 if (item.type === 'image' && item.fileName.endsWith('.png')) mime = 'image/png';
                 else if (item.type === 'image' && (item.fileName.endsWith('.jpg') || item.fileName.endsWith('.jpeg'))) mime = 'image/jpeg';
@@ -379,16 +409,34 @@ class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
             }
             custAssets[item.fileName] = idx;
         }
-        // 2. 替换 html 中 var CUST_ASSETS 和 var ASSETS_64
-        function replaceByStack(str, key, brackets, newCode) {
-            const range = findRangeByStack(str, key, brackets);
-            if (!range) return str;
-            return str.substring(0, range.start) + newCode + str.substring(range.end + 1);
+
+        // 处理 ASSETS
+        const assets = {};
+        for (const item of assetsItems) {
+            let dataurl = item.content;
+            if (dataurl instanceof Uint8Array) {
+                let mime = 'application/octet-stream';
+                if (item.type === 'image' && item.fileName.endsWith('.png')) mime = 'image/png';
+                else if (item.type === 'image' && (item.fileName.endsWith('.jpg') || item.fileName.endsWith('.jpeg'))) mime = 'image/jpeg';
+                else if (item.type === 'audio') mime = 'audio/mpeg';
+                else if (item.type === 'json') mime = 'application/json';
+                dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl));
+            }
+            assets[item.fileName] = dataurl;
         }
-        const newCustAssets = JSON.stringify(custAssets, null, 2);
-        const newAssets64 = JSON.stringify(assets64, null, 2);
-        let html2 = replaceByStack(html, 'var CUST_ASSETS = ', '{}', newCustAssets);
-        html2 = replaceByStack(html2, 'var ASSETS_64 = ', '[]', newAssets64);
+
+        // 替换 HTML
+        let html2 = html;
+        if (Object.keys(custAssets).length > 0) {
+            const newCustAssets = JSON.stringify(custAssets, null, 2);
+            const newAssets64 = JSON.stringify(assets64, null, 2);
+            html2 = replaceByStack(html2, 'var CUST_ASSETS = ', '{}', newCustAssets);
+            html2 = replaceByStack(html2, 'var ASSETS_64 = ', '[]', newAssets64);
+        }
+        if (Object.keys(assets).length > 0) {
+            const newAssets = JSON.stringify(assets, null, 2);
+            html2 = replaceByStack(html2, 'var ASSETS=', '{}', newAssets);
+        }
         return html2;
     }
 }

@@ -532,14 +532,6 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
             const dataurl = res[fileName]
             let type = guessFileType(fileName)
 
-            // 如果是 res/import 开头的文件，保存到临时列表
-            if (fileName.startsWith('res/import')) {
-                loaderJsonStrs.push({
-                    fileName,
-                    content: dataurl
-                })
-            }
-
             srcItems.push({
                 key: fileName.replace(/\.[^.]+$/, ''),
                 fileName,
@@ -592,7 +584,38 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
 
     // 处理动画剪辑数据
     getAllSrcItems_animClips(srcItems, assetsStructure) {
+        const ret = []
+        const importSrcItems = srcItems.filter((item) => item.fileName.startsWith("res/import") && item.fileName.endsWith(".json"));
+        for (let i = 0; i < importSrcItems.length; i++) {
+            let textureRealUUIDs = [];
+            const importContent = importSrcItems[i].content;
+            const json = JSON.parse(importContent);
+            const animClipNode = json.find((node) => node.__type__ === "cc.AnimationClip" && node.curveData && node.curveData.comps && node.curveData.comps["cc.Sprite"] && node.curveData.comps["cc.Sprite"]["spriteFrame"]);
+            if (animClipNode) {
+                const textureUUIDs = animClipNode.curveData.comps["cc.Sprite"]["spriteFrame"].map((it) => it.value.__uuid__);
+                const assetsStrctureObj = assetsStructure[importSrcItems[i].key];
+                if (assetsStrctureObj) {
+                    const textureUUIDIndexs = textureUUIDs.map((it) => assetsStrctureObj.indexOf(it));
+                    const textureEncodedUUIDs = textureUUIDIndexs.map((it) => this.getTextureEncodedUUID(json, it));
+                    textureRealUUIDs = textureEncodedUUIDs.map((it) => CocosUUIDHelper.decodeUuid(it));
+                }
+            }
 
+            if (textureRealUUIDs.length > 0) {
+                for (let j = 0; j < textureRealUUIDs.length; j++) {
+                    const srcItemObj = srcItems.find((it) => it.fileName.includes(textureRealUUIDs[j]));
+                    ret.push({
+                        key: textureRealUUIDs[j],
+                        fileName: `anim_clip/${importSrcItems[i].key}/${j}.png`,
+                        type: 'image',
+                        content: srcItemObj.content,
+                        src: textureRealUUIDs[j],
+                        typeTag: 'ANIM_CLIP',
+                    })
+                }
+            }
+        }
+        return ret;
     }
 
 }

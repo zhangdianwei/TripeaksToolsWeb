@@ -416,43 +416,53 @@ function stripMimePrefix(str) {
     return str.replace(/^data:[^;]+;base64,/, '');
 }
 
-// cocos base64 uuid 字符到数字的映射表
-const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const BASE64_VALUES = new Array(128).fill(0);
-for (let i = 0; i < BASE64_CHARS.length; ++i) {
-    BASE64_VALUES[BASE64_CHARS.charCodeAt(i)] = i;
-}
-
-/**
- * 将 Cocos Creator 的 base64 uuid（22位）解码为标准 uuid（带短横线）
- * @param {string} t 22位base64 uuid
- * @returns {string} 标准uuid
- */
-function decodeUuid(t) {
-    if (t.length !== 22) return t;
-    const HexChars = '0123456789abcdef';
-    // 36位模板，带短横线
-    const UuidTemplate = [
+class CocosUUIDHelper {
+    static BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    static BASE64_VALUES = (() => {
+        const values = new Array(128).fill(0);
+        for (let i = 0; i < CocosUUIDHelper.BASE64_CHARS.length; ++i) {
+            values[CocosUUIDHelper.BASE64_CHARS.charCodeAt(i)] = i;
+        }
+        return values;
+    })();
+    static HexChars = '0123456789abcdef';
+    static UuidTemplate = [
         '', '', '', '', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '', '', '', '', '', '', '', ''
     ];
-    // 可写入字符的位置索引
-    const Indices = [];
-    for (let i = 0; i < 36; ++i) {
-        if (UuidTemplate[i] !== '-') Indices.push(i);
+    static Indices = (() => {
+        const indices = [];
+        for (let i = 0; i < 36; ++i) {
+            if (CocosUUIDHelper.UuidTemplate[i] !== '-') indices.push(i);
+        }
+        return indices;
+    })();
+
+    static decodeUuid(t) {
+        if (t.length !== 22) return t;
+        const HexChars = this.HexChars;
+        // 36位模板，带短横线
+        const UuidTemplate = [
+            '', '', '', '', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '', '', '', '', '', '', '', ''
+        ];
+        // 可写入字符的位置索引
+        const Indices = [];
+        for (let i = 0; i < 36; ++i) {
+            if (UuidTemplate[i] !== '-') Indices.push(i);
+        }
+        UuidTemplate[0] = t[0];
+        UuidTemplate[1] = t[1];
+        for (let e = 2, i = 2; e < 22; e += 2) {
+            const s = this.BASE64_VALUES[t.charCodeAt(e)];
+            const c = this.BASE64_VALUES[t.charCodeAt(e + 1)];
+            UuidTemplate[Indices[i++]] = HexChars[s >> 2];
+            UuidTemplate[Indices[i++]] = HexChars[((s & 3) << 2) | (c >> 4)];
+            UuidTemplate[Indices[i++]] = HexChars[c & 0xF];
+        }
+        return UuidTemplate.join('');
     }
-    UuidTemplate[0] = t[0];
-    UuidTemplate[1] = t[1];
-    for (let e = 2, i = 2; e < 22; e += 2) {
-        const s = BASE64_VALUES[t.charCodeAt(e)];
-        const c = BASE64_VALUES[t.charCodeAt(e + 1)];
-        UuidTemplate[Indices[i++]] = HexChars[s >> 2];
-        UuidTemplate[Indices[i++]] = HexChars[((s & 3) << 2) | (c >> 4)];
-        UuidTemplate[Indices[i++]] = HexChars[c & 0xF];
-    }
-    return UuidTemplate.join('');
 }
 
-// console.log("zdw.decode", decodeUuid('384YUrYI1C1ZPtqhSwrWXO'))
+// console.log("zdw.decode", CocosUUIDHelper.decodeUuid('384YUrYI1C1ZPtqhSwrWXO'))
 
 class ParseHelperBase {
     getAllSrcItems(html) {
@@ -511,19 +521,13 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
         return all;
     }
 
-    getAllSrcItems(html) {
-        // 使用 parseObjectByStack 定位 this.resKey，解析内容
+    getAllSrcItems_srcItems(html) {
+        const srcItems = []
         const range = findRangeByStack(html, this.resKey, "{}")
         if (!range) return []
         const code = html.substring(range.start, range.end + 1)
         console.log(code)
         let res = (new Function(`return ${code}`))()
-        if (!res) return []
-        const srcItems = []
-
-        // 临时列表存储 res/import 开头的文件
-        const loaderJsonStrs = []
-
         for (const fileName in res) {
             const dataurl = res[fileName]
             let type = guessFileType(fileName)
@@ -545,10 +549,27 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
                 typeTag: 'COCOS_CREATOR',
             })
         }
+        return srcItems;
+    }
 
-        // 处理动画剪辑数据
-        this.cacheAnimationClip(srcItems, loaderJsonStrs)
+    getAllSrcItems_assetsStructure(html) {
+        const range = findRangeByStack(html, "window._CCSettings=", "{}")
+        if (!range) return []
+        const code = html.substring(range.start, range.end + 1)
+        console.log(code)
+        let res = (new Function(`return ${code}`))()
+        const ret = {}
+        ret = { ...ret, ...res.rawAssets.assets }
+        ret = { ...ret, ...res.rawAssets.internal }
+        ret = { ...ret, ...res.packedAssets }
+        return ret;
+    }
 
+    getAllSrcItems(html) {
+        const srcItems = this.getAllSrcItems_srcItems(html)
+        const assetsStructure = this.getAllSrcItems_assetsStructure(html)
+        const animClips = this.getAllSrcItems_animClips(srcItems, assetsStructure)
+        srcItems.push(...animClips)
         return srcItems
     }
 
@@ -570,61 +591,8 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
     }
 
     // 处理动画剪辑数据
-    cacheAnimationClip(srcItems, loaderJsonStrs) {
-        for (const item of loaderJsonStrs) {
-            try {
-                // 解析JSON内容
-                const jsonData = JSON.parse(item.content)
+    getAllSrcItems_animClips(srcItems, assetsStructure) {
 
-                const spriteFrames = []
-                const animationClipObjects = []
-
-                // 检查是否是数组格式
-                if (Array.isArray(jsonData)) {
-                    for (const obj of jsonData) {
-                        // 查找 "__type__": "cc.AnimationClip" 的对象
-                        if (obj.__type__ === "cc.AnimationClip" && obj.curveData && obj.curveData.comps) {
-                            // 检查是否有 cc.Sprite 组件
-                            if (obj.curveData.comps["cc.Sprite"] && obj.curveData.comps["cc.Sprite"]["spriteFrame"]) {
-                                animationClipObjects.push(obj)
-                            }
-                        }
-                        if (obj.__type__ === "cc.SpriteFrame") {
-                            spriteFrames.push(obj)
-                        }
-                    }
-                }
-
-                if (animationClipObjects.length > 0 && spriteFrames.length > 0) {
-                    for (let i = 0; i < animationClipObjects.length; i++) {
-                        const clipObj = animationClipObjects[i];
-                        const spriteFrameArray = clipObj.curveData.comps["cc.Sprite"]["spriteFrame"];
-
-                        for (let j = 0; j < spriteFrameArray.length; j++) {
-                            const textureUUID = spriteFrames[j].content.texture;
-                            const decodedTextureUUID = decodeUuid(textureUUID);
-
-                            // 在srcItems中查找匹配的原始资源
-                            const originalItem = srcItems.find(item =>
-                                item.fileName && item.fileName.includes(decodedTextureUUID)
-                            );
-
-                            if (originalItem) {
-                                // 复制原始资源，重命名为j.png，放到anim_clip/name/目录下
-                                srcItems.push({
-                                    fileName: `anim_clip/${clipObj._name}/${j}.png`,
-                                    type: originalItem.type,
-                                    content: originalItem.content
-                                });
-                            }
-                        }
-                    }
-                }
-
-            } catch (error) {
-                console.warn('解析动画剪辑数据失败:', item.fileName, error)
-            }
-        }
     }
 
 }

@@ -416,6 +416,43 @@ function stripMimePrefix(str) {
     return str.replace(/^data:[^;]+;base64,/, '');
 }
 
+// cocos base64 uuid 字符到数字的映射表
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const BASE64_VALUES = new Array(128).fill(0);
+for (let i = 0; i < BASE64_CHARS.length; ++i) {
+    BASE64_VALUES[BASE64_CHARS.charCodeAt(i)] = i;
+}
+
+/**
+ * 将 Cocos Creator 的 base64 uuid（22位）解码为标准 uuid（带短横线）
+ * @param {string} t 22位base64 uuid
+ * @returns {string} 标准uuid
+ */
+function decodeUuid(t) {
+    if (t.length !== 22) return t;
+    const HexChars = '0123456789abcdef';
+    // 36位模板，带短横线
+    const UuidTemplate = [
+        '', '', '', '', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '-', '', '', '', '', '', '', '', '', '', '', '', ''
+    ];
+    // 可写入字符的位置索引
+    const Indices = [];
+    for (let i = 0; i < 36; ++i) {
+        if (UuidTemplate[i] !== '-') Indices.push(i);
+    }
+    UuidTemplate[0] = t[0];
+    UuidTemplate[1] = t[1];
+    for (let e = 2, i = 2; e < 22; e += 2) {
+        const s = BASE64_VALUES[t.charCodeAt(e)];
+        const c = BASE64_VALUES[t.charCodeAt(e + 1)];
+        UuidTemplate[Indices[i++]] = HexChars[s >> 2];
+        UuidTemplate[Indices[i++]] = HexChars[((s & 3) << 2) | (c >> 4)];
+        UuidTemplate[Indices[i++]] = HexChars[c & 0xF];
+    }
+    return UuidTemplate.join('');
+}
+
+// console.log("zdw.decode", decodeUuid('384YUrYI1C1ZPtqhSwrWXO'))
 
 class ParseHelperBase {
     getAllSrcItems(html) {
@@ -424,7 +461,6 @@ class ParseHelperBase {
     setAllSrcItems(html, srcItems) {
         throw new Exception("未实现");
     }
-
     async reloadAllFromFileMap(srcItems, fileMap) {
         throw new Exception("未实现");
     }
@@ -433,88 +469,11 @@ class ParseHelperBase {
     }
 }
 
-class ParseHelper_Applovin_CocosCreatorSuperHtml extends ParseHelperBase {
-
-    async reloadAllFromFileMap(items, fileMap) {
-        // 遍历 srcItems，根据 fileName 去 fileMap 填充 content 字段
-        for (const item of items) {
-            const fileName = item.fileName || item.src;
-            const fileMapName = fileName.replace("res/", "");
-            if (fileMap[fileMapName]) {
-                if (item.type === 'json' || item.type === 'unknown') {
-                    item.content = atob(fileMap[fileMapName].split(',')[1])
-                }
-                else {
-                    item.content = fileMap[fileMapName];
-                }
-            }
-        }
-    }
-
-    async toAllDownloadItems(items) {
-        // 返回 {fileName, content, type} 列表，content 为二进制
-        const all = [];
-        for (const item of items) {
-            let fileName = item.fileName || item.src;
-            fileName = fileName.replace("res/", "");
-            let type = item.type;
-            let content = item.content;
-            try {
-                content = base64ToBinary(content);
-            }
-            catch (e) {
-            }
-            if (content) {
-                all.push({ fileName, content, type });
-            }
-        }
-        return all;
-    }
-
-    getAllSrcItems(html) {
-        // 使用 parseObjectByStack 定位 window.__res=，解析内容
-        const range = findRangeByStack(html, "window.__res=", "{}");
-        if (!range) return [];
-        const code = html.substring(range.start, range.end + 1);
-        console.log(code);
-        let res = (new Function(`return ${code}`))();
-        if (!res) return [];
-        const srcItems = [];
-        for (const fileName in res) {
-            const dataurl = res[fileName];
-            let type = guessFileType(fileName);
-            srcItems.push({
-                key: fileName.replace(/\.[^.]+$/, ''),
-                fileName,
-                type,
-                content: dataurl,
-                src: fileName,
-                typeTag: 'COCOS_CREATOR',
-            });
-        }
-        return srcItems;
-    }
-
-    setAllSrcItems(html, srcItems) {
-        // 生成 window.res 对象
-        const res = {};
-        for (const item of srcItems) {
-            let dataurl = item.content;
-            if (dataurl instanceof Uint8Array) {
-                let mime = guessMimeType(item.type, item.fileName);
-                dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl));
-            }
-
-            res[item.fileName] = dataurl;
-        }
-        // 替换 HTML 中的 window.res
-        const newRes = JSON.stringify(res);
-        let html2 = replaceByStack(html, 'window.__res=', '{}', newRes);
-        return html2;
-    }
-}
-
 class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
+    constructor(resKey = "window.res=") {
+        super();
+        this.resKey = resKey;
+    }
 
     async reloadAllFromFileMap(items, fileMap) {
         // 遍历 srcItems，根据 fileName 去 fileMap 填充 content 字段
@@ -553,17 +512,30 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
     }
 
     getAllSrcItems(html) {
-        // 使用 parseObjectByStack 定位 window.res=，解析内容
-        const range = findRangeByStack(html, "window.res=", "{}");
-        if (!range) return [];
-        const code = html.substring(range.start, range.end + 1);
-        console.log(code);
-        let res = (new Function(`return ${code}`))();
-        if (!res) return [];
-        const srcItems = [];
+        // 使用 parseObjectByStack 定位 this.resKey，解析内容
+        const range = findRangeByStack(html, this.resKey, "{}")
+        if (!range) return []
+        const code = html.substring(range.start, range.end + 1)
+        console.log(code)
+        let res = (new Function(`return ${code}`))()
+        if (!res) return []
+        const srcItems = []
+
+        // 临时列表存储 res/import 开头的文件
+        const loaderJsonStrs = []
+
         for (const fileName in res) {
-            const dataurl = res[fileName];
-            let type = guessFileType(fileName);
+            const dataurl = res[fileName]
+            let type = guessFileType(fileName)
+
+            // 如果是 res/import 开头的文件，保存到临时列表
+            if (fileName.startsWith('res/import')) {
+                loaderJsonStrs.push({
+                    fileName,
+                    content: dataurl
+                })
+            }
+
             srcItems.push({
                 key: fileName.replace(/\.[^.]+$/, ''),
                 fileName,
@@ -571,33 +543,100 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
                 content: dataurl,
                 src: fileName,
                 typeTag: 'COCOS_CREATOR',
-            });
+            })
         }
-        return srcItems;
+
+        // 处理动画剪辑数据
+        this.cacheAnimationClip(srcItems, loaderJsonStrs)
+
+        return srcItems
     }
 
     setAllSrcItems(html, srcItems) {
-        // 生成 window.res 对象
-        const res = {};
+        // 生成 this.resKey 对象
+        const res = {}
         for (const item of srcItems) {
-            let dataurl = item.content;
+            let dataurl = item.content
             if (dataurl instanceof Uint8Array) {
-                let mime = guessMimeType(item.type, item.fileName);
-                dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl));
+                let mime = guessMimeType(item.type, item.fileName)
+                dataurl = 'data:' + mime + ';base64,' + btoa(String.fromCharCode(...dataurl))
             }
-
-            res[item.fileName] = dataurl;
+            res[item.fileName] = dataurl
         }
-        // 替换 HTML 中的 window.res
-        const newRes = JSON.stringify(res);
-        let html2 = replaceByStack(html, 'window.res=', '{}', newRes);
-        return html2;
+        // 替换 HTML 中的 this.resKey
+        const newRes = JSON.stringify(res)
+        let html2 = replaceByStack(html, this.resKey, '{}', newRes)
+        return html2
+    }
+
+    // 处理动画剪辑数据
+    cacheAnimationClip(srcItems, loaderJsonStrs) {
+        for (const item of loaderJsonStrs) {
+            try {
+                // 解析JSON内容
+                const jsonData = JSON.parse(item.content)
+
+                const spriteFrames = []
+                const animationClipObjects = []
+
+                // 检查是否是数组格式
+                if (Array.isArray(jsonData)) {
+                    for (const obj of jsonData) {
+                        // 查找 "__type__": "cc.AnimationClip" 的对象
+                        if (obj.__type__ === "cc.AnimationClip" && obj.curveData && obj.curveData.comps) {
+                            // 检查是否有 cc.Sprite 组件
+                            if (obj.curveData.comps["cc.Sprite"] && obj.curveData.comps["cc.Sprite"]["spriteFrame"]) {
+                                animationClipObjects.push(obj)
+                            }
+                        }
+                        if (obj.__type__ === "cc.SpriteFrame") {
+                            spriteFrames.push(obj)
+                        }
+                    }
+                }
+
+                if (animationClipObjects.length > 0 && spriteFrames.length > 0) {
+                    for (let i = 0; i < animationClipObjects.length; i++) {
+                        const clipObj = animationClipObjects[i];
+                        const spriteFrameArray = clipObj.curveData.comps["cc.Sprite"]["spriteFrame"];
+
+                        for (let j = 0; j < spriteFrameArray.length; j++) {
+                            const textureUUID = spriteFrames[j].content.texture;
+                            const decodedTextureUUID = decodeUuid(textureUUID);
+
+                            // 在srcItems中查找匹配的原始资源
+                            const originalItem = srcItems.find(item =>
+                                item.fileName && item.fileName.includes(decodedTextureUUID)
+                            );
+
+                            if (originalItem) {
+                                // 复制原始资源，重命名为j.png，放到anim_clip/name/目录下
+                                srcItems.push({
+                                    fileName: `anim_clip/${clipObj._name}/${j}.png`,
+                                    type: originalItem.type,
+                                    content: originalItem.content
+                                });
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.warn('解析动画剪辑数据失败:', item.fileName, error)
+            }
+        }
+    }
+
+}
+
+class ParseHelper_Applovin_CocosCreatorSuperHtml extends ParseHelper_Applovin_CocosCreator {
+    constructor() {
+        super("window.__res=");
     }
 }
 
-
+// 其他 ParseHelper 类（如 ParseHelper_Applovin_CreateJS、ParseHelper_Applovin_PhaserEditor）也提前到这里
 class ParseHelper_Applovin_CreateJS extends ParseHelperBase {
-
     async reloadAllFromFileMap(items, fileMap) {
         // 遍历 srcItems，根据 fileName 去 fileMap 填充 content 字段
         for (const item of items) {

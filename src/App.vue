@@ -15,7 +15,7 @@ const PageConfigs = [
   // { name: "ScavengeMap", comp: ScavengeMap },
   // { name: "MonsterMazeMap", comp: MonsterMazeMap },
   { name: "数数（程序版）", comp: EasyShushu },
-  // { name: "小狗快跑地图编辑器", comp: DogRun },
+  { name: "小狗快跑地图编辑器", comp: DogRun },
   { name: "敲格子UI编辑器", comp: BuriedBounty },
   { name: "PlayableAds", comp: PlayableAds },
 ];

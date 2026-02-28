@@ -550,7 +550,7 @@ class ParseHelper_Applovin_CocosCreator extends ParseHelperBase {
         const code = html.substring(range.start, range.end + 1)
         console.log(code)
         let res = (new Function(`return ${code}`))()
-        const ret = {}
+        let ret = {}
         ret = { ...ret, ...res.rawAssets.assets }
         ret = { ...ret, ...res.rawAssets.internal }
         ret = { ...ret, ...res.packedAssets }

@@ -3,7 +3,7 @@ import { ref, reactive, computed, shallowRef, onMounted } from "vue";
 import {
   Button, Input, Select, Option, InputNumber, DatePicker,
   Alert, Form, FormItem, Card, Table, Page, Tag, Tooltip, Message,
-  Collapse, Panel,
+  Collapse, Panel, Divider,
   Dropdown, DropdownMenu, DropdownItem, Icon,
 } from "view-ui-plus";
 
@@ -235,6 +235,15 @@ const userDefaultShownCols = ['ttid', '#account_id', '#distinct_id', '#user_id',
 const userShownColsText = ref(userDefaultShownCols.join(','));
 
 const userAllColNames = computed(() => Object.keys(userColMeta.value.allColConfigs));
+const userStatsColumns = [
+  { title: '统计结果', key: 'kind', width: 120 },
+  { title: '值', key: 'value', tooltip: true, ellipsis: true },
+];
+const userStatsRows = computed(() => [
+  { kind: 'user_id', value: userOutputVar.allUserIds.join(', ') },
+  { kind: 'account_id', value: userOutputVar.allAccountIds.join(', ') },
+  { kind: 'distinct_id', value: userOutputVar.allDistinctIds.join(', ') },
+]);
 const userShownCols = computed({
   get: () => userShownColsText.value.split(',').map(s => s.trim()).filter(Boolean),
   set: (val) => { userShownColsText.value = val.join(','); },
@@ -247,14 +256,22 @@ const userShownColConfigs = computed(() => {
   }).filter(Boolean);
 });
 
+const idCandidateFields = ['#user_id', '#account_id', '#distinct_id', 'accountid', 'distinctid', 'userid', 'user_id', 'c_userid', 'c_clientid'];
+
 function extractUsersFromResult(parsed) {
   const accSet = new Set();
   const distSet = new Set();
   const userSet = new Set();
   for (const row of parsed.rows) {
-    [row['#account_id'], row.accountid, row.userid].forEach(v => v && accSet.add(v));
-    [row['#distinct_id'], row.distinctid].forEach(v => v && distSet.add(v));
-    if (row['#user_id'] != null) userSet.add(String(row['#user_id']));
+    for (const f of idCandidateFields) {
+      const v = row[f];
+      if (v == null || v === '') continue;
+      const s = String(v);
+      const kind = classifyId(s);
+      if (kind === 'user_id') userSet.add(s);
+      else if (kind === 'distinct_id') distSet.add(s);
+      else accSet.add(s);
+    }
   }
   return {
     users: parsed.rows,
@@ -551,7 +568,7 @@ onMounted(() => {
 <template>
   <Alert v-if="errorMsg" type="error" show-icon closable @on-close="errorMsg = ''">{{ errorMsg }}</Alert>
 
-  <h3>1. 查所有账号<span style="color:#999;font-weight:normal;margin-left:8px;">共 {{ userOutputVar.users.length }} 个</span></h3>
+  <Divider orientation="left">用户查询</Divider>
   <Form inline :label-width="0">
     <FormItem>
       <Select v-model="userInputVar.projectName" style="width: 160px">
@@ -596,18 +613,7 @@ onMounted(() => {
       </Select>
     </div>
     <Table :border="true" :columns="userShownColConfigs" :data="userOutputVar.users" size="small" />
-    <div style="margin-top:6px;">
-      <strong>合并 account_ids：</strong>
-      <Tag v-for="id in userOutputVar.allAccountIds" :key="`a-${id}`">{{ id }}</Tag>
-    </div>
-    <div>
-      <strong>合并 distinct_ids：</strong>
-      <Tag v-for="id in userOutputVar.allDistinctIds" :key="`d-${id}`">{{ id }}</Tag>
-    </div>
-    <div>
-      <strong>合并 user_ids：</strong>
-      <Tag v-for="id in userOutputVar.allUserIds" :key="`u-${id}`">{{ id }}</Tag>
-    </div>
+    <Table :border="true" :columns="userStatsColumns" :data="userStatsRows" size="small" class="stats-table" />
   </template>
 
   <h3>2. 事件查询</h3>
@@ -733,6 +739,10 @@ h3 {
   color: #515a6e;
   font-size: 13px;
   white-space: nowrap;
+}
+
+.stats-table {
+  margin-top: 16px;
 }
 
 :deep(.ivu-table) {

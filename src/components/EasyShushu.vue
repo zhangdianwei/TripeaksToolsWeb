@@ -2,7 +2,8 @@
 import { ref, reactive, computed, shallowRef, onMounted } from "vue";
 import {
   Button, Input, Select, Option, InputNumber, DatePicker,
-  Alert, Divider, Form, FormItem, Card, Table, Page,
+  Alert, Form, FormItem, Card, Table, Page, Tag, Tooltip, Message,
+  Collapse, Panel,
   Dropdown, DropdownMenu, DropdownItem, Icon,
 } from "view-ui-plus";
 
@@ -179,7 +180,7 @@ function computeColMeta(parsed) {
 // 1. 用户信息输入
 // ==========================================================
 const userInputVar = reactive({
-  userInput: '',
+  userInput: 'C1m3U3ZoYm\t772dd71ac9623749',
   projectName: 'Tripeaks1',
   isUserSearching: false,
 });
@@ -348,18 +349,15 @@ LIMIT ${eventInputVar.maxLimit}`;
 // ==========================================================
 const eventQueryResult = shallowRef({ raw: '', codes: [], headers: [], rows: [] });
 const eventColMeta = shallowRef({ allColConfigs: {}, sameValueColConfigs: {}, goodColConfigs: {} });
-const eventCheckLogs = ref([]);
+const eventCheckLogs = ref(null);
 
 function runEventChecks(parsed) {
-  const logs = [];
-  logs.push({ level: 'info', text: `共 ${parsed.rows.length} 条事件` });
-
   const seenAccount = new Set();
   const seenDistinct = new Set();
   const seenUser = new Set();
   const seenCity = new Set();
-  let errlogCount = 0;
-  let jsErrorCount = 0;
+  let errlog = 0;
+  let jsError = 0;
 
   for (const row of parsed.rows) {
     if (row.account_id) seenAccount.add(row.account_id);
@@ -368,37 +366,28 @@ function runEventChecks(parsed) {
     if (row.c_clientid) seenDistinct.add(row.c_clientid);
     if (row.user_id != null) seenUser.add(String(row.user_id));
     if (row.city) seenCity.add(row.city);
-    if (row.event_name === 'errlog') errlogCount++;
-    if (row.event_name === 'jserror_new') jsErrorCount++;
+    if (row.event_name === 'errlog') errlog++;
+    if (row.event_name === 'jserror_new') jsError++;
   }
 
-  logs.push({ level: 'info', text: `涉及 account_id: ${[...seenAccount].join(', ') || '无'}` });
-  logs.push({ level: 'info', text: `涉及 distinct_id: ${[...seenDistinct].join(', ') || '无'}` });
-  logs.push({ level: 'info', text: `涉及 user_id: ${[...seenUser].join(', ') || '无'}` });
+  const accounts = [...seenAccount];
+  const distincts = [...seenDistinct];
+  const userIds = [...seenUser];
+  const cities = [...seenCity];
 
-  const newAccount = [...seenAccount].filter(x => !userOutputVar.allAccountIds.includes(x));
-  if (newAccount.length) {
-    logs.push({ level: 'warning', text: `检测到新 account_id（含 c_userid 对比）: ${newAccount.join(', ')}` });
-  }
-  const newDistinct = [...seenDistinct].filter(x => !userOutputVar.allDistinctIds.includes(x));
-  if (newDistinct.length) {
-    logs.push({ level: 'warning', text: `检测到新 distinct_id（含 c_clientid 对比）: ${newDistinct.join(', ')}` });
-  }
-  const newUser = [...seenUser].filter(x => !userOutputVar.allUserIds.includes(x));
-  if (newUser.length) {
-    logs.push({ level: 'warning', text: `检测到新 user_id: ${newUser.join(', ')}` });
-  }
-
-  if (seenCity.size > 1) {
-    logs.push({ level: 'warning', text: `跨地区: ${[...seenCity].join(', ')}` });
-  } else if (seenCity.size === 1) {
-    logs.push({ level: 'info', text: `城市: ${[...seenCity][0]}` });
-  }
-
-  if (errlogCount) logs.push({ level: 'warning', text: `errlog: ${errlogCount} 条` });
-  if (jsErrorCount) logs.push({ level: 'warning', text: `jserror_new: ${jsErrorCount} 条` });
-
-  return logs;
+  return {
+    total: parsed.rows.length,
+    accounts,
+    distincts,
+    userIds,
+    cities,
+    errlog,
+    jsError,
+    newAccount: accounts.filter(x => !userOutputVar.allAccountIds.includes(x)),
+    newDistinct: distincts.filter(x => !userOutputVar.allDistinctIds.includes(x)),
+    newUser: userIds.filter(x => !userOutputVar.allUserIds.includes(x)),
+    crossCity: cities.length > 1,
+  };
 }
 
 async function onClickSearchEvent() {
@@ -553,6 +542,15 @@ function onAddColName(value) {
 function onPageChange(value) { eventFilterVar.curPage = value; }
 function onPageSizeChange(value) { eventFilterVar.pageSize = value; }
 
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    Message.success('已复制');
+  } catch (err) {
+    Message.error(`复制失败: ${err.message}`);
+  }
+}
+
 onMounted(() => {
   fetchToken();
 });
@@ -561,130 +559,173 @@ onMounted(() => {
 <template>
   <Alert v-if="errorMsg" type="error" show-icon closable @on-close="errorMsg = ''">{{ errorMsg }}</Alert>
 
-  <Card :bordered="false" dis-hover>
-    <template #title>1. 用户信息输入</template>
-    <Form :label-width="140">
-      <FormItem label="项目">
-        <Select v-model="userInputVar.projectName" style="width: 240px">
-          <Option v-for="name in projectNames" :key="name" :value="name">{{ name }}</Option>
-        </Select>
-      </FormItem>
-      <FormItem label="ID（逗号/空格分隔）">
-        <Input v-model="userInputVar.userInput" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }"
-          placeholder="自动识别 account_id / distinct_id / user_id，例: sk1Y7TGZB, 772dd71ac9623749, 1242505651616231424" />
-      </FormItem>
-      <FormItem label="解析结果">
-        account_id × {{ parsedUserInput.account_id.length }} ，
-        distinct_id × {{ parsedUserInput.distinct_id.length }} ，
-        user_id × {{ parsedUserInput.user_id.length }}
-      </FormItem>
-      <FormItem label="查询用户 SQL">
-        <Input type="textarea" :value="userQuerySql" :autosize="{ minRows: 4, maxRows: 12 }" readonly />
-      </FormItem>
-      <FormItem>
-        <Button type="primary" :loading="userInputVar.isUserSearching" @click="onClickSearchUser">查询用户</Button>
-      </FormItem>
-    </Form>
-  </Card>
+  <h3>1. 查所有账号<span style="color:#999;font-weight:normal;margin-left:8px;">共 {{ userOutputVar.users.length }} 个</span></h3>
+  <Form inline :label-width="0">
+    <FormItem>
+      <Select v-model="userInputVar.projectName" style="width: 160px">
+        <Option v-for="name in projectNames" :key="name" :value="name">{{ name }}</Option>
+      </Select>
+    </FormItem>
+    <FormItem>
+      <Input v-model="userInputVar.userInput" style="width: 480px"
+        placeholder="ID（逗号/空格分隔）例: sk1Y7TGZB, 772dd71ac9623749, 1242505651616231424">
+        <template #suffix>
+          <Tooltip placement="bottom-end" transfer>
+            <Icon type="ios-information-circle-outline" style="cursor: pointer;" />
+            <template #content>
+              <div>account_id × {{ parsedUserInput.account_id.length }}：{{ parsedUserInput.account_id.join(', ') || '-' }}</div>
+              <div>distinct_id × {{ parsedUserInput.distinct_id.length }}：{{ parsedUserInput.distinct_id.join(', ') || '-' }}</div>
+              <div>user_id × {{ parsedUserInput.user_id.length }}：{{ parsedUserInput.user_id.join(', ') || '-' }}</div>
+            </template>
+          </Tooltip>
+        </template>
+      </Input>
+    </FormItem>
+    <FormItem>
+      <Tooltip placement="bottom" transfer :max-width="700">
+        <Button shape="circle">sql</Button>
+        <template #content>
+          <div style="text-align:right; margin-bottom:4px;">
+            <Button size="small" @click="copyToClipboard(userQuerySql)">复制</Button>
+          </div>
+          <pre style="margin:0; white-space:pre-wrap; word-break:break-all;">{{ userQuerySql }}</pre>
+        </template>
+      </Tooltip>
+    </FormItem>
+    <FormItem>
+      <Button type="primary" :loading="userInputVar.isUserSearching" @click="onClickSearchUser">查询用户</Button>
+    </FormItem>
+  </Form>
+  <template v-if="userOutputVar.users.length">
+    <div v-for="(u, i) in userOutputVar.users" :key="i" style="margin-bottom:4px;">
+      <Tag color="blue">{{ u.platform || '-' }}</Tag>
+      account_id: <code>{{ u.accountId || '-' }}</code>
+      distinct_id: <code>{{ u.distinctId || '-' }}</code>
+      user_id: <code>{{ u.userId || '-' }}</code>
+    </div>
+    <div style="margin-top:6px;">
+      <strong>合并 account_ids：</strong>
+      <Tag v-for="id in userOutputVar.allAccountIds" :key="`a-${id}`">{{ id }}</Tag>
+    </div>
+    <div>
+      <strong>合并 distinct_ids：</strong>
+      <Tag v-for="id in userOutputVar.allDistinctIds" :key="`d-${id}`">{{ id }}</Tag>
+    </div>
+    <div>
+      <strong>合并 user_ids：</strong>
+      <Tag v-for="id in userOutputVar.allUserIds" :key="`u-${id}`">{{ id }}</Tag>
+    </div>
+  </template>
 
-  <Divider />
+  <h3>2. 事件查询</h3>
+  <Form inline :label-width="80">
+    <FormItem label="开始(UTC)">
+      <DatePicker v-model="eventInputVar.startTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
+        placeholder="UTC" style="width: 200px" />
+    </FormItem>
+    <FormItem label="结束(UTC)">
+      <DatePicker v-model="eventInputVar.endTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
+        placeholder="UTC" style="width: 200px" />
+    </FormItem>
+    <FormItem label="最大条数">
+      <InputNumber v-model="eventInputVar.maxLimit" :min="1" :max="100000" style="width: 120px" />
+    </FormItem>
+    <FormItem>
+      <Button type="primary" :loading="eventInputVar.isEventSearching" @click="onClickSearchEvent">查询事件</Button>
+    </FormItem>
+  </Form>
+  <Collapse simple>
+    <Panel name="eventSql">
+      查询事件 SQL
+      <template #content>
+        <Input type="textarea" :value="eventQuerySql" :autosize="{ minRows: 4, maxRows: 16 }" readonly />
+      </template>
+    </Panel>
+  </Collapse>
 
-  <Card :bordered="false" dis-hover>
-    <template #title>2. 用户信息展示（共 {{ userOutputVar.users.length }} 个）</template>
-    <Table :columns="userTableColumns" :data="userOutputVar.users" size="small" />
-    <Form :label-width="140" style="margin-top: 12px;">
-      <FormItem label="合并 account_ids">{{ userOutputVar.allAccountIds.join(', ') || '-' }}</FormItem>
-      <FormItem label="合并 distinct_ids">{{ userOutputVar.allDistinctIds.join(', ') || '-' }}</FormItem>
-      <FormItem label="合并 user_ids">{{ userOutputVar.allUserIds.join(', ') || '-' }}</FormItem>
-    </Form>
-  </Card>
+  <h3>3. 事件检测</h3>
+  <div v-if="!eventCheckLogs" style="color:#999">尚未查询事件</div>
+  <template v-else>
+    <div>
+      <Tag color="default">总数 {{ eventCheckLogs.total }}</Tag>
+      <Tag v-if="eventCheckLogs.errlog" color="orange">errlog {{ eventCheckLogs.errlog }}</Tag>
+      <Tag v-if="eventCheckLogs.jsError" color="orange">jserror_new {{ eventCheckLogs.jsError }}</Tag>
+      <Tag v-for="c in eventCheckLogs.cities" :key="`c-${c}`" :color="eventCheckLogs.crossCity ? 'red' : 'default'">city: {{ c }}</Tag>
+    </div>
+    <Alert v-if="eventCheckLogs.newAccount.length" type="warning" show-icon>
+      新 account_id: {{ eventCheckLogs.newAccount.join(', ') }}
+    </Alert>
+    <Alert v-if="eventCheckLogs.newDistinct.length" type="warning" show-icon>
+      新 distinct_id: {{ eventCheckLogs.newDistinct.join(', ') }}
+    </Alert>
+    <Alert v-if="eventCheckLogs.newUser.length" type="warning" show-icon>
+      新 user_id: {{ eventCheckLogs.newUser.join(', ') }}
+    </Alert>
+    <Alert v-if="eventCheckLogs.crossCity" type="warning" show-icon>
+      涉及多个 city: {{ eventCheckLogs.cities.join(', ') }}
+    </Alert>
+  </template>
 
-  <Divider />
-
-  <Card :bordered="false" dis-hover>
-    <template #title>3. 事件查询</template>
-    <Form :label-width="140">
-      <FormItem label="开始时间(UTC)">
-        <DatePicker v-model="eventInputVar.startTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
-          placeholder="UTC 开始时间" style="width: 240px" />
-      </FormItem>
-      <FormItem label="结束时间(UTC)">
-        <DatePicker v-model="eventInputVar.endTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
-          placeholder="UTC 结束时间" style="width: 240px" />
-      </FormItem>
-      <FormItem label="最大条数">
-        <InputNumber v-model="eventInputVar.maxLimit" :min="1" :max="100000" style="width: 160px" />
-      </FormItem>
-      <FormItem label="查询事件 SQL">
-        <Input type="textarea" :value="eventQuerySql" :autosize="{ minRows: 4, maxRows: 12 }" readonly />
-      </FormItem>
-      <FormItem>
-        <Button type="primary" :loading="eventInputVar.isEventSearching" @click="onClickSearchEvent">查询事件</Button>
-      </FormItem>
-    </Form>
-  </Card>
-
-  <Divider />
-
-  <Card :bordered="false" dis-hover>
-    <template #title>4. 事件检测</template>
-    <div v-if="!eventCheckLogs.length">尚未查询事件</div>
-    <Alert v-for="(log, i) in eventCheckLogs" :key="i" :type="log.level" show-icon>{{ log.text }}</Alert>
-  </Card>
-
-  <Divider />
-
-  <Card :bordered="false" dis-hover>
-    <template #title>5. 事件过滤</template>
-    <Form :label-width="140">
-      <FormItem label="查询模板">
-        <Dropdown v-for="drop in quickTemplate" :key="drop.name" style="margin-right: 8px;"
-          @on-click="(item) => onClickQuickTemplate(drop, item)">
-          <Button type="primary">{{ drop.name }} <Icon type="ios-arrow-down" /></Button>
-          <template #list>
-            <DropdownMenu>
-              <DropdownItem v-for="item in drop.children" :key="item.name" :name="item.name">{{ item.name }}
-              </DropdownItem>
-            </DropdownMenu>
-          </template>
-        </Dropdown>
-      </FormItem>
-      <FormItem label="显示哪些字段">
-        <Input v-model="eventFilterVar.wantShowColNamesText">
-          <template #append>
-            <Select filterable style="width: 180px;" @on-select="onAddColName">
-              <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
-            </Select>
-          </template>
-        </Input>
-      </FormItem>
-      <FormItem label="条件过滤表达式">
-        <Input v-model="eventFilterVar.conditionText" clearable
-          placeholder='输入合法的 js，例如 x.event_name=="add_items" && x.clienttime.startsWith("2024")' />
-      </FormItem>
-      <FormItem>
-        <Button type="primary" @click="onClickApplyFilter">应用过滤</Button>
-        <span style="margin-left: 12px;">符合条件 {{ eventFilterResult.filtered.length }} / 总数 {{
-          eventQueryResult.rows.length }}</span>
-      </FormItem>
-      <FormItem label="排序">
-        <Select v-model="eventFilterVar.sortColName" filterable style="width: 240px;">
-          <Option value="ttid">ttid</Option>
-          <Option value="event_time_utc">event_time_utc</Option>
-          <Option value="clienttime">clienttime</Option>
-          <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
-        </Select>
-        <Select v-model="eventFilterVar.sortCategory" style="width: 100px; margin-left: 8px;">
-          <Option value="升序">升序</Option>
-          <Option value="降序">降序</Option>
-        </Select>
-      </FormItem>
-      <FormItem label="表格分页">
-        <Page show-sizer show-total :total="eventFilterResult.filtered.length" :current="eventFilterVar.curPage"
-          :page-size="eventFilterVar.pageSize" :page-size-opts="[10, 50, 100, 500]" @on-change="onPageChange"
-          @on-page-size-change="onPageSizeChange" />
-      </FormItem>
-    </Form>
-    <Table :border="true" :columns="wantShowColConfigs" :data="eventDisplayedRows" size="small" />
-  </Card>
+  <h3>4. 事件过滤</h3>
+  <Form inline :label-width="80">
+    <FormItem label="模板">
+      <Dropdown v-for="drop in quickTemplate" :key="drop.name" style="margin-right: 8px;"
+        @on-click="(item) => onClickQuickTemplate(drop, item)">
+        <Button>{{ drop.name }} <Icon type="ios-arrow-down" /></Button>
+        <template #list>
+          <DropdownMenu>
+            <DropdownItem v-for="item in drop.children" :key="item.name" :name="item.name">{{ item.name }}
+            </DropdownItem>
+          </DropdownMenu>
+        </template>
+      </Dropdown>
+    </FormItem>
+    <FormItem label="排序">
+      <Select v-model="eventFilterVar.sortColName" filterable style="width: 200px;">
+        <Option value="ttid">ttid</Option>
+        <Option value="event_time_utc">event_time_utc</Option>
+        <Option value="clienttime">clienttime</Option>
+        <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
+      </Select>
+      <Select v-model="eventFilterVar.sortCategory" style="width: 90px; margin-left: 4px;">
+        <Option value="升序">升序</Option>
+        <Option value="降序">降序</Option>
+      </Select>
+    </FormItem>
+  </Form>
+  <Form :label-width="80">
+    <FormItem label="显示字段">
+      <Input v-model="eventFilterVar.wantShowColNamesText">
+        <template #append>
+          <Select filterable style="width: 160px;" @on-select="onAddColName">
+            <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
+          </Select>
+        </template>
+      </Input>
+    </FormItem>
+    <FormItem label="过滤条件">
+      <Input v-model="eventFilterVar.conditionText" clearable
+        placeholder='合法的 js，例如 x.event_name=="add_items" && x.clienttime.startsWith("2024")'>
+        <template #append>
+          <Button type="primary" @click="onClickApplyFilter">应用</Button>
+        </template>
+      </Input>
+    </FormItem>
+    <FormItem label="分页">
+      <Page show-sizer show-total :total="eventFilterResult.filtered.length" :current="eventFilterVar.curPage"
+        :page-size="eventFilterVar.pageSize" :page-size-opts="[10, 50, 100, 500]" @on-change="onPageChange"
+        @on-page-size-change="onPageSizeChange" />
+      <span style="margin-left: 8px; color:#999;">符合 {{ eventFilterResult.filtered.length }} / 总数 {{
+        eventQueryResult.rows.length }}</span>
+    </FormItem>
+  </Form>
+  <Table :border="true" :columns="wantShowColConfigs" :data="eventDisplayedRows" size="small" />
 </template>
+
+<style scoped>
+h3 {
+  margin: 12px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #e8e8e8;
+}
+</style>

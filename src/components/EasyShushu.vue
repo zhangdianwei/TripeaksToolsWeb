@@ -53,12 +53,6 @@ function deepFreeze(obj) {
   });
 }
 
-function getCodeNameFromHeader(headerName) {
-  let codeName = headerName.replaceAll(" ", "").replaceAll("#", "");
-  if (/^[^a-zA-Z]/.test(codeName)) return null;
-  return codeName;
-}
-
 function pad2(n) { return String(n).padStart(2, '0'); }
 
 // DatePicker 显示什么时间就当 UTC 时间用：读取 local 分量当 UTC 分量
@@ -99,43 +93,39 @@ function parseShushuResponse(text) {
     throw new Error(first.return_message || '查询失败');
   }
   const rawHeaders = first.data.headers;
-  const codes = rawHeaders.map(h => getCodeNameFromHeader(h));
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
     const arr = JSON.parse(lines[i]);
     const obj = { ttid: i };
-    for (let c = 0; c < codes.length; c++) {
-      const code = codes[c];
-      if (code) obj[code] = arr[c];
+    for (let c = 0; c < rawHeaders.length; c++) {
+      obj[rawHeaders[c]] = arr[c];
     }
     rows.push(obj);
   }
-  const headers = rawHeaders.concat(['ttid']);
-  const allCodes = codes.concat(['ttid']);
-  return { raw: text, headers, codes: allCodes, rows };
+  const headers = ['ttid'].concat(rawHeaders);
+  return { raw: text, headers, rows };
 }
 
 // ============ 列配置（事件） ============
 const shouldRemoveColNames = ['country', 'new', 'fps', 'uuid', 'app_version'];
-const fixedColNames = ['ttid', 'event_time_utc', 'event_name'];
+const fixedColNames = ['ttid', 'event_time_utc', '#event_name'];
 const commonTemplate1ColNames = fixedColNames.concat(['params']);
 
 const defColConfigs = {
-  'ttid': { key: 'ttid', title: 'ttid', width: 80, resizable: true, fixed: 'left', sortable: true },
-  'event_time_utc': { key: 'event_time_utc', title: 'event_time(utc)', width: 250, resizable: true, fixed: 'left', sortable: true },
-  '#event_time': { key: 'event_time', title: 'event_time', width: 250, resizable: true, sortable: true },
-  'clienttime': { key: 'clienttime', title: 'clienttime', width: 250, resizable: true, sortable: true },
-  '#event_name': { key: 'event_name', title: 'event_name', width: 200, resizable: true, fixed: 'left', sortable: true },
+  'ttid': { key: 'ttid', title: 'ttid', width: 80, resizable: true, fixed: 'left' },
+  'event_time_utc': { key: 'event_time_utc', title: 'event_time(utc)', width: 250, resizable: true, fixed: 'left' },
+  '#event_time': { key: '#event_time', title: '#event_time', width: 250, resizable: true },
+  'clienttime': { key: 'clienttime', title: 'clienttime', width: 250, resizable: true },
+  '#event_name': { key: '#event_name', title: '#event_name', width: 200, resizable: true, fixed: 'left' },
   'params': { key: 'params', title: 'params', width: 250, resizable: true },
 };
 
 function makeDefaultColConfig(headerName) {
   return {
-    key: getCodeNameFromHeader(headerName),
+    key: headerName,
     title: headerName,
     width: 300,
     resizable: true,
-    sortable: true,
   };
 }
 
@@ -147,17 +137,15 @@ function computeColMeta(parsed) {
   const allColConfigs = {};
   const sameValueColConfigs = {};
   const goodColConfigs = {};
-  for (let c = 0; c < parsed.codes.length; c++) {
-    const code = parsed.codes[c];
-    if (!code) continue;
-    if (shouldRemoveColNames.includes(code)) continue;
-    const cfg = getColConfigFromHeader(parsed.headers[c]);
-    if (!cfg.key) continue;
+  for (let c = 0; c < parsed.headers.length; c++) {
+    const name = parsed.headers[c];
+    if (shouldRemoveColNames.includes(name)) continue;
+    const cfg = getColConfigFromHeader(name);
     let anyValue = null;
     let hasSameValue = true;
     let hasAny = false;
     for (const row of parsed.rows) {
-      const v = row[code];
+      const v = row[name];
       if (v != null && v !== '') {
         hasAny = true;
         if (anyValue == null) { anyValue = v; }
@@ -165,11 +153,11 @@ function computeColMeta(parsed) {
       }
     }
     if (hasAny) {
-      allColConfigs[code] = cfg;
+      allColConfigs[name] = cfg;
       if (hasSameValue) {
-        sameValueColConfigs[code] = { ...cfg, value: anyValue };
+        sameValueColConfigs[name] = { ...cfg, value: anyValue };
       } else {
-        goodColConfigs[code] = cfg;
+        goodColConfigs[name] = cfg;
       }
     }
   }
@@ -234,7 +222,8 @@ LIMIT 100`;
 // ==========================================================
 // 2. 用户信息展示
 // ==========================================================
-const userQueryResult = shallowRef({ raw: '', codes: [], headers: [], rows: [] });
+const userQueryResult = shallowRef({ raw: '', headers: [], rows: [] });
+const userColMeta = shallowRef({ allColConfigs: {}, sameValueColConfigs: {}, goodColConfigs: {} });
 const userOutputVar = reactive({
   users: [],
   allAccountIds: [],
@@ -242,31 +231,33 @@ const userOutputVar = reactive({
   allUserIds: [],
 });
 
-const userTableColumns = [
-  { key: 'accountId', title: 'account_id', resizable: true },
-  { key: 'distinctId', title: 'distinct_id', resizable: true },
-  { key: 'userId', title: 'user_id', resizable: true },
-  { key: 'platform', title: 'platform', width: 120, resizable: true },
-];
+const userDefaultShownCols = ['ttid', '#account_id', '#distinct_id', '#user_id', 'platform'];
+const userShownColsText = ref(userDefaultShownCols.join(','));
+
+const userAllColNames = computed(() => Object.keys(userColMeta.value.allColConfigs));
+const userShownCols = computed({
+  get: () => userShownColsText.value.split(',').map(s => s.trim()).filter(Boolean),
+  set: (val) => { userShownColsText.value = val.join(','); },
+});
+const userShownColConfigs = computed(() => {
+  return userShownCols.value.map(n => {
+    const base = userColMeta.value.allColConfigs[n] || { key: n, title: n, resizable: true };
+    if (n === 'ttid') return { ...base, width: 60, minWidth: 50, ellipsis: true, tooltip: true };
+    return { ...base, width: 180, minWidth: 100, ellipsis: true, tooltip: true };
+  }).filter(Boolean);
+});
 
 function extractUsersFromResult(parsed) {
-  const users = [];
   const accSet = new Set();
   const distSet = new Set();
   const userSet = new Set();
   for (const row of parsed.rows) {
-    users.push({
-      accountId: row.account_id || '',
-      distinctId: row.distinct_id || '',
-      userId: row.user_id != null ? String(row.user_id) : '',
-      platform: row.platform || '',
-    });
-    [row.account_id, row.accountid, row.userid].forEach(v => v && accSet.add(v));
-    [row.distinct_id, row.distinctid].forEach(v => v && distSet.add(v));
-    if (row.user_id != null) userSet.add(String(row.user_id));
+    [row['#account_id'], row.accountid, row.userid].forEach(v => v && accSet.add(v));
+    [row['#distinct_id'], row.distinctid].forEach(v => v && distSet.add(v));
+    if (row['#user_id'] != null) userSet.add(String(row['#user_id']));
   }
   return {
-    users,
+    users: parsed.rows,
     allAccountIds: [...accSet],
     allDistinctIds: [...distSet],
     allUserIds: [...userSet],
@@ -283,12 +274,16 @@ async function onClickSearchUser() {
       errorMsg.value = '请输入至少一个 id';
       return;
     }
-    const text = await fetchServer(sql);
+    // const text = await fetchServer(sql);
+    const text = `{"data":{"headers":["#user_id","#account_id","#distinct_id","#active_time","#reg_time","#user_operation","#server_time","#update_time","#kafka_offset","#event_date","network","adgroup","trackertoken","platform","creative","isnewaeo2","devidemodel","isaeo","countrycode","campaign","adid","trackername","createtime","firstpurchasetime","totaliap","usercoins","firstbuytime","#distinct_list","fbname","canplaylevel","email_board","email_fb","#dw_create_time","#dw_update_time","#uuid","lastlogintime","gameversion","lastpurchasetime","lastlogintimedate","lastpurchasetimedate","adjust_adid","adjust_installed_at","adjust_ip_address","adjust_country","adjust_device_type","adjust_os_name","adjust_adgroup_name","adjust_device_name","adjust_language","adjust_campaign_name","adjust_creative_name","adjust_os_version","adjust_app_version_short","adjust_app_version","adjust_idfv","adjust_idfa","adjust_network_name","distinctid","adjust_android_id","app_version","gaid","timezone","notification_status","language","device_name","device_id","os_version","firebase_id","firebase_fcm_token","res_version","os_name","apns_token","att_status","idfv","idfa","first_app_version","adjust_gaid","last_launch_time","user_step","continuity_login","user_day_age","user_iap_total_cent","user_minutes_age","user_iap_times","max_iap_revenue","is_debug","user_reward_video_times","user_interstitial_video_times","user_coin","user_iap_total_usd","user_interstitial_revenue_usd","user_id","user_reward_revenue_usd","user_level","max_iap_revenue_usd","last_iap_time","first_iap_time","first_launch_time","userid","first_interstitial_video_time","fb_name","first_reward_video_time","fb_mail","first_iap_user_level","meta_campaign_name","meta_ad_set_name","meta_ad_name","adjust_timezone","fb_ad_name","fb_campaign_name","fb_ad_set_name","pay_coins","accountid","max_items_attempt","remaining_spending","user_name"]},"return_code":0,"return_message":"success","showStackMessage":false}
+[1491513470724612096,"C1m3U3ZoYm",null,"2026-04-08 11:02:00.786","2026-04-08 11:02:00.786","user_set","2026-04-08 19:02:06.527","2026-04-08 12:02:03.814",39624964340,20260410,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,"2026-04-08 19:02:23.773","02357b40-91c1-4f97-8eb5-d604a393f70d",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,190.0,null,null,null,null,null,null,null,null,null,null,null,null,"C1m3U3ZoYm",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]
+[1491513447303614476,null,"772dd71ac9623749","2026-04-08 12:01:52.695",null,"user_set","2026-04-08 19:02:29.827","2026-04-08 19:02:29.827",39624966590,20260410,null,null,null,"googleplay",null,null,null,null,"GB",null,null,null,"2026-04-08 12:01:59.114",null,null,null,null,["772dd71ac9623749"],null,null,null,null,null,"2026-04-08 19:03:22.785","09f1fecf-9ba0-0963-a617-5bab5616a4ec",1775646119686,null,null,"2026-04-08 12:01:59.686",null,"62351a3d7fd15320ff191b10c7083604","1775646117","80.194.229.181","gb","tablet","android","Google Ads ACI (2awwikm)","GalaxyTabS9FE","en","Store Rule","TP-AOS-WW-UAC3.0-mix-23.08.08-jy (20438022610) (13ho03u0)","16","1.222063.0","1.222063.0",null,null,"Unverified Devices","772dd71ac9623749",null,"1.222063.0","fa9fd7ea-e5b6-42b7-a0be-2a894a6f12da","-1","on","en","SM-X516B","772dd71ac9623749","16","dqStQ1J0RY2zW8RSSgk6kf","dqStQ1J0RY2zW8RSSgk6kf:APA91bESoYOzZ-qocm_iWL4H3k_yQdSWfwh4hlB0ZMcdVb90nl7e5PVoCPn9A3wRq4zO0qFhciGeT84ShAJtj5Bj0KvZCu99E4d6ZUkHtknRihbzv98nCmE","222063.0","android",null,null,null,null,"1.222063.0","fa9fd7ea-e5b6-42b7-a0be-2a894a6f12da",null,170.0,1.0,1.0,0.0,0.0,0.0,0.0,false,0.0,0.0,5000.0,0.0,0.0,"772dd71ac9623749",0.0,1.0,0.0,null,null,"2026-04-08 12:01:52.698","C1m3U3ZoYm",null,null,null,null,null,null,null,null,"UTC+0100",null,null,null,0.0,"772dd71ac9623749",0.0,null,null]`
     if (!text) { errorMsg.value = '无返回'; return; }
     if (text.includes('查询似乎出现了一些问题')) { errorMsg.value = text; return; }
     const parsed = parseShushuResponse(text);
     deepFreeze(parsed.rows);
     userQueryResult.value = parsed;
+    userColMeta.value = computeColMeta(parsed);
     Object.assign(userOutputVar, extractUsersFromResult(parsed));
   } catch (err) {
     errorMsg.value = String(err.message || err);
@@ -347,7 +342,7 @@ LIMIT ${eventInputVar.maxLimit}`;
 // ==========================================================
 // 4. 事件查询 + 检测
 // ==========================================================
-const eventQueryResult = shallowRef({ raw: '', codes: [], headers: [], rows: [] });
+const eventQueryResult = shallowRef({ raw: '', headers: [], rows: [] });
 const eventColMeta = shallowRef({ allColConfigs: {}, sameValueColConfigs: {}, goodColConfigs: {} });
 const eventCheckLogs = ref(null);
 
@@ -360,14 +355,14 @@ function runEventChecks(parsed) {
   let jsError = 0;
 
   for (const row of parsed.rows) {
-    if (row.account_id) seenAccount.add(row.account_id);
+    if (row['#account_id']) seenAccount.add(row['#account_id']);
     if (row.c_userid) seenAccount.add(row.c_userid);
-    if (row.distinct_id) seenDistinct.add(row.distinct_id);
+    if (row['#distinct_id']) seenDistinct.add(row['#distinct_id']);
     if (row.c_clientid) seenDistinct.add(row.c_clientid);
-    if (row.user_id != null) seenUser.add(String(row.user_id));
-    if (row.city) seenCity.add(row.city);
-    if (row.event_name === 'errlog') errlog++;
-    if (row.event_name === 'jserror_new') jsError++;
+    if (row['#user_id'] != null) seenUser.add(String(row['#user_id']));
+    if (row['#city']) seenCity.add(row['#city']);
+    if (row['#event_name'] === 'errlog') errlog++;
+    if (row['#event_name'] === 'jserror_new') jsError++;
   }
 
   const accounts = [...seenAccount];
@@ -438,9 +433,12 @@ const allColNames = computed(() => Object.keys(eventColMeta.value.allColConfigs)
 const sameValueColNames = computed(() => Object.keys(eventColMeta.value.sameValueColConfigs));
 const goodColNames = computed(() => Object.keys(eventColMeta.value.goodColConfigs));
 
+const eventShownCols = computed({
+  get: () => eventFilterVar.wantShowColNamesText.split(',').map(s => s.trim()).filter(Boolean),
+  set: (val) => { eventFilterVar.wantShowColNamesText = val.join(','); },
+});
 const wantShowColConfigs = computed(() => {
-  const names = eventFilterVar.wantShowColNamesText.split(',').map(s => s.trim()).filter(Boolean);
-  return names.map(n => eventColMeta.value.allColConfigs[n] || defColConfigs[n]).filter(Boolean);
+  return eventShownCols.value.map(n => eventColMeta.value.allColConfigs[n] || defColConfigs[n]).filter(Boolean);
 });
 
 function onClickApplyFilter() {
@@ -499,28 +497,28 @@ const quickTemplate = [
       {
         name: '查 jserror_new', callback: () => {
           eventFilterVar.wantShowColNamesText = fixedColNames.concat(['msg']).join(',');
-          eventFilterVar.conditionText = `x.event_name=="jserror_new"`;
+          eventFilterVar.conditionText = `x["#event_name"]=="jserror_new"`;
           onClickApplyFilter();
         }
       },
       {
         name: '查 errlog', callback: () => {
           eventFilterVar.wantShowColNamesText = fixedColNames.concat(['errtype', 'msg']).join(',');
-          eventFilterVar.conditionText = `x.event_name=="errlog"`;
+          eventFilterVar.conditionText = `x["#event_name"]=="errlog"`;
           onClickApplyFilter();
         }
       },
       {
         name: '查 add_items', callback: () => {
           eventFilterVar.wantShowColNamesText = fixedColNames.concat(['add_source', 'sub_add_source']).join(',');
-          eventFilterVar.conditionText = `x.event_name=="add_items"`;
+          eventFilterVar.conditionText = `x["#event_name"]=="add_items"`;
           onClickApplyFilter();
         }
       },
       {
         name: '查支付购买', callback: () => {
           eventFilterVar.wantShowColNamesText = fixedColNames.concat(['productid', 'orderid', 'add_source', 'sub_add_source']).join(',');
-          eventFilterVar.conditionText = `["add_items","purchased","payment","ipa_begin","iap_end","iap_restore_begin","iap_verify_begin","subscrib","iap_consume","restore","restore_finish"].indexOf(x.event_name)>=0`;
+          eventFilterVar.conditionText = `["add_items","purchased","payment","ipa_begin","iap_end","iap_restore_begin","iap_verify_begin","subscrib","iap_consume","restore","restore_finish"].indexOf(x["#event_name"])>=0`;
           onClickApplyFilter();
         }
       },
@@ -531,12 +529,6 @@ const quickTemplate = [
 function onClickQuickTemplate(drop, item) {
   const config = drop.children.find(x => x.name === item);
   if (config) config.callback();
-}
-
-function onAddColName(value) {
-  if (!value) return;
-  const current = eventFilterVar.wantShowColNamesText;
-  eventFilterVar.wantShowColNamesText = current ? `${current},${value}` : value;
 }
 
 function onPageChange(value) { eventFilterVar.curPage = value; }
@@ -567,8 +559,8 @@ onMounted(() => {
       </Select>
     </FormItem>
     <FormItem>
-      <Input v-model="userInputVar.userInput" style="width: 480px"
-        placeholder="ID（逗号/空格分隔）例: sk1Y7TGZB, 772dd71ac9623749, 1242505651616231424">
+      <Input v-model="userInputVar.userInput" style="width: 600px"
+        placeholder="任意account_id/distinct_id/user_id（逗号/空格分隔）例: sk1Y7TGZB, 772dd71ac9623749, 1242505651616231424">
         <template #suffix>
           <Tooltip placement="bottom-end" transfer>
             <Icon type="ios-information-circle-outline" style="cursor: pointer;" />
@@ -597,12 +589,13 @@ onMounted(() => {
     </FormItem>
   </Form>
   <template v-if="userOutputVar.users.length">
-    <div v-for="(u, i) in userOutputVar.users" :key="i" style="margin-bottom:4px;">
-      <Tag color="blue">{{ u.platform || '-' }}</Tag>
-      account_id: <code>{{ u.accountId || '-' }}</code>
-      distinct_id: <code>{{ u.distinctId || '-' }}</code>
-      user_id: <code>{{ u.userId || '-' }}</code>
+    <div class="table-toolbar">
+      <span class="table-toolbar-label">显示字段</span>
+      <Select v-model="userShownCols" multiple filterable placeholder="选择要显示的字段" style="flex:1;">
+        <Option v-for="name in userAllColNames" :key="name" :value="name">{{ name }}</Option>
+      </Select>
     </div>
+    <Table :border="true" :columns="userShownColConfigs" :data="userOutputVar.users" size="small" />
     <div style="margin-top:6px;">
       <strong>合并 account_ids：</strong>
       <Tag v-for="id in userOutputVar.allAccountIds" :key="`a-${id}`">{{ id }}</Tag>
@@ -695,17 +688,13 @@ onMounted(() => {
   </Form>
   <Form :label-width="80">
     <FormItem label="显示字段">
-      <Input v-model="eventFilterVar.wantShowColNamesText">
-        <template #append>
-          <Select filterable style="width: 160px;" @on-select="onAddColName">
-            <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
-          </Select>
-        </template>
-      </Input>
+      <Select v-model="eventShownCols" multiple filterable placeholder="选择要显示的字段">
+        <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
+      </Select>
     </FormItem>
     <FormItem label="过滤条件">
       <Input v-model="eventFilterVar.conditionText" clearable
-        placeholder='合法的 js，例如 x.event_name=="add_items" && x.clienttime.startsWith("2024")'>
+        placeholder='合法的 js，例如 x["#event_name"]=="add_items" && x.clienttime.startsWith("2024")'>
         <template #append>
           <Button type="primary" @click="onClickApplyFilter">应用</Button>
         </template>
@@ -727,5 +716,26 @@ h3 {
   margin: 12px 0 6px;
   padding-bottom: 4px;
   border-bottom: 1px solid #e8e8e8;
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #dcdee2;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: #fafafa;
+  margin-top: 8px;
+}
+.table-toolbar-label {
+  color: #515a6e;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+:deep(.ivu-table) {
+  font-size: 14px;
 }
 </style>

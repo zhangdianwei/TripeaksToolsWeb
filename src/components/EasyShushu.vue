@@ -133,33 +133,11 @@ function getColConfigFromHeader(headerName) {
 
 function computeColMeta(parsed) {
   const allColConfigs = {};
-  const sameValueColConfigs = {};
-  const goodColConfigs = {};
-  for (let c = 0; c < parsed.headers.length; c++) {
-    const name = parsed.headers[c];
+  for (const name of parsed.headers) {
     if (shouldRemoveColNames.includes(name)) continue;
-    const cfg = getColConfigFromHeader(name);
-    let anyValue = null;
-    let hasSameValue = true;
-    let hasAny = false;
-    for (const row of parsed.rows) {
-      const v = row[name];
-      if (v != null && v !== '') {
-        hasAny = true;
-        if (anyValue == null) { anyValue = v; }
-        else if (v !== anyValue) { hasSameValue = false; }
-      }
-    }
-    if (hasAny) {
-      allColConfigs[name] = cfg;
-      if (hasSameValue) {
-        sameValueColConfigs[name] = { ...cfg, value: anyValue };
-      } else {
-        goodColConfigs[name] = cfg;
-      }
-    }
+    allColConfigs[name] = getColConfigFromHeader(name);
   }
-  return { allColConfigs, sameValueColConfigs, goodColConfigs };
+  return { allColConfigs };
 }
 
 // ==========================================================
@@ -221,7 +199,7 @@ LIMIT 100`;
 // 2. 用户信息展示
 // ==========================================================
 const userQueryResult = shallowRef({ raw: '', headers: [], rows: [] });
-const userColMeta = shallowRef({ allColConfigs: {}, sameValueColConfigs: {}, goodColConfigs: {} });
+const userColMeta = shallowRef({ allColConfigs: {} });
 const userOutputVar = reactive({
   users: [],
   allAccountIds: [],
@@ -357,7 +335,7 @@ LIMIT ${eventInputVar.maxLimit}`;
 // 4. 事件查询 + 检测
 // ==========================================================
 const eventQueryResult = shallowRef({ raw: '', headers: [], rows: [] });
-const eventColMeta = shallowRef({ allColConfigs: {}, sameValueColConfigs: {}, goodColConfigs: {} });
+const eventColMeta = shallowRef({ allColConfigs: {} });
 const eventCheckLogs = ref(null);
 
 const eventStatsColumns = [
@@ -471,8 +449,6 @@ const eventFilterVar = reactive({
 const eventFilterResult = shallowRef({ filtered: [] });
 
 const allColNames = computed(() => Object.keys(eventColMeta.value.allColConfigs));
-const sameValueColNames = computed(() => Object.keys(eventColMeta.value.sameValueColConfigs));
-const goodColNames = computed(() => Object.keys(eventColMeta.value.goodColConfigs));
 
 const eventShownCols = computed({
   get: () => eventFilterVar.wantShowColNamesText.split(',').map(s => s.trim()).filter(Boolean),

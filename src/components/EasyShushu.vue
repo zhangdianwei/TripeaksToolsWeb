@@ -107,8 +107,7 @@ function parseShushuResponse(text) {
 
 // ============ 列配置（事件） ============
 const shouldRemoveColNames = ['country', 'new', 'fps', 'uuid', 'app_version'];
-const fixedColNames = ['ttid', 'event_time_utc', '#event_name', 'activity_type', 'activity_step', 'add_source', 'sub_add_source'];
-const commonTemplate1ColNames = fixedColNames.concat(['params']);
+const fixedColNames = ['ttid', 'event_time_utc', '#event_name', 'activity_type', 'activity_step', 'add_source', 'sub_add_source', 'msg'];
 
 const defColConfigs = {
   'ttid': { key: 'ttid', title: 'ttid', width: 80, resizable: true, fixed: 'left' },
@@ -263,7 +262,7 @@ function extractUsersFromResult(parsed) {
   for (const row of parsed.rows) {
     for (const f of idCandidateFields) {
       const v = row[f];
-      if (v == null || v === '') continue;
+      if (v == null || v === '' || v === 'null' || v === 'undefined') continue;
       const s = String(v);
       const kind = classifyId(s);
       if (kind === 'user_id') userSet.add(s);
@@ -290,9 +289,6 @@ async function onClickSearchUser() {
       return;
     }
     const text = await fetchServer(sql);
-//     const text = `{"data":{"headers":["#user_id","#account_id","#distinct_id","#active_time","#reg_time","#user_operation","#server_time","#update_time","#kafka_offset","#event_date","network","adgroup","trackertoken","platform","creative","isnewaeo2","devidemodel","isaeo","countrycode","campaign","adid","trackername","createtime","firstpurchasetime","totaliap","usercoins","firstbuytime","#distinct_list","fbname","canplaylevel","email_board","email_fb","#dw_create_time","#dw_update_time","#uuid","lastlogintime","gameversion","lastpurchasetime","lastlogintimedate","lastpurchasetimedate","adjust_adid","adjust_installed_at","adjust_ip_address","adjust_country","adjust_device_type","adjust_os_name","adjust_adgroup_name","adjust_device_name","adjust_language","adjust_campaign_name","adjust_creative_name","adjust_os_version","adjust_app_version_short","adjust_app_version","adjust_idfv","adjust_idfa","adjust_network_name","distinctid","adjust_android_id","app_version","gaid","timezone","notification_status","language","device_name","device_id","os_version","firebase_id","firebase_fcm_token","res_version","os_name","apns_token","att_status","idfv","idfa","first_app_version","adjust_gaid","last_launch_time","user_step","continuity_login","user_day_age","user_iap_total_cent","user_minutes_age","user_iap_times","max_iap_revenue","is_debug","user_reward_video_times","user_interstitial_video_times","user_coin","user_iap_total_usd","user_interstitial_revenue_usd","user_id","user_reward_revenue_usd","user_level","max_iap_revenue_usd","last_iap_time","first_iap_time","first_launch_time","userid","first_interstitial_video_time","fb_name","first_reward_video_time","fb_mail","first_iap_user_level","meta_campaign_name","meta_ad_set_name","meta_ad_name","adjust_timezone","fb_ad_name","fb_campaign_name","fb_ad_set_name","pay_coins","accountid","max_items_attempt","remaining_spending","user_name"]},"return_code":0,"return_message":"success","showStackMessage":false}
-// [1491513470724612096,"C1m3U3ZoYm",null,"2026-04-08 11:02:00.786","2026-04-08 11:02:00.786","user_set","2026-04-08 19:02:06.527","2026-04-08 12:02:03.814",39624964340,20260410,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,"2026-04-08 19:02:23.773","02357b40-91c1-4f97-8eb5-d604a393f70d",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,190.0,null,null,null,null,null,null,null,null,null,null,null,null,"C1m3U3ZoYm",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]
-// [1491513447303614476,null,"772dd71ac9623749","2026-04-08 12:01:52.695",null,"user_set","2026-04-08 19:02:29.827","2026-04-08 19:02:29.827",39624966590,20260410,null,null,null,"googleplay",null,null,null,null,"GB",null,null,null,"2026-04-08 12:01:59.114",null,null,null,null,["772dd71ac9623749"],null,null,null,null,null,"2026-04-08 19:03:22.785","09f1fecf-9ba0-0963-a617-5bab5616a4ec",1775646119686,null,null,"2026-04-08 12:01:59.686",null,"62351a3d7fd15320ff191b10c7083604","1775646117","80.194.229.181","gb","tablet","android","Google Ads ACI (2awwikm)","GalaxyTabS9FE","en","Store Rule","TP-AOS-WW-UAC3.0-mix-23.08.08-jy (20438022610) (13ho03u0)","16","1.222063.0","1.222063.0",null,null,"Unverified Devices","772dd71ac9623749",null,"1.222063.0","fa9fd7ea-e5b6-42b7-a0be-2a894a6f12da","-1","on","en","SM-X516B","772dd71ac9623749","16","dqStQ1J0RY2zW8RSSgk6kf","dqStQ1J0RY2zW8RSSgk6kf:APA91bESoYOzZ-qocm_iWL4H3k_yQdSWfwh4hlB0ZMcdVb90nl7e5PVoCPn9A3wRq4zO0qFhciGeT84ShAJtj5Bj0KvZCu99E4d6ZUkHtknRihbzv98nCmE","222063.0","android",null,null,null,null,"1.222063.0","fa9fd7ea-e5b6-42b7-a0be-2a894a6f12da",null,170.0,1.0,1.0,0.0,0.0,0.0,0.0,false,0.0,0.0,5000.0,0.0,0.0,"772dd71ac9623749",0.0,1.0,0.0,null,null,"2026-04-08 12:01:52.698","C1m3U3ZoYm",null,null,null,null,null,null,null,null,"UTC+0100",null,null,null,0.0,"772dd71ac9623749",0.0,null,null]`
     if (!text) { errorMsg.value = '无返回'; return; }
     if (text.includes('查询似乎出现了一些问题')) { errorMsg.value = text; return; }
     const parsed = parseShushuResponse(text);
@@ -312,7 +308,6 @@ async function onClickSearchUser() {
 // ==========================================================
 function getDefaultEventStart() {
   const d = new Date();
-  d.setDate(d.getDate() - 1);
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -410,7 +405,7 @@ function runEventChecks(parsed) {
     if (row['#event_name'] === 'jserror_new') jsError++;
     for (const f of idCandidateFields) {
       const v = row[f];
-      if (v == null || v === '') continue;
+      if (v == null || v === '' || v === 'null' || v === 'undefined') continue;
       const s = String(v);
       const kind = classifyId(s);
       if (kind === 'user_id') userSet.add(s);
@@ -452,7 +447,7 @@ async function onClickSearchEvent() {
     eventFilterResult.value = { filtered: parsed.rows };
     eventFilterVar.curPage = 1;
     if (!eventFilterVar.wantShowColNamesText) {
-      eventFilterVar.wantShowColNamesText = commonTemplate1ColNames.join(',');
+      eventFilterVar.wantShowColNamesText = fixedColNames.join(',');
     }
   } catch (err) {
     errorMsg.value = String(err.message || err);

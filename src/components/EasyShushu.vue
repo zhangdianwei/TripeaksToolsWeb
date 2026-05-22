@@ -580,6 +580,51 @@ async function copyToClipboard(text) {
   }
 }
 
+function downloadBlob(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(v) {
+  if (v == null) return '';
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function rowsToCsv(rows, headers) {
+  const cols = headers.filter(h => h !== 'ttid');
+  const lines = [cols.join(',')];
+  for (const r of rows) {
+    lines.push(cols.map(c => csvEscape(r[c])).join(','));
+  }
+  return lines.join('\n');
+}
+
+function onDownload(source, kind) {
+  const d = new Date();
+  const stamp = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}`;
+  const base = `${source}_${stamp}`;
+  const result = source === 'user' ? userQueryResult.value : eventQueryResult.value;
+  if (!result || !result.rows.length) {
+    Message.warning('没有可下载的数据');
+    return;
+  }
+  if (kind === 'raw') {
+    downloadBlob(result.raw, `${base}.txt`, 'text/plain;charset=utf-8');
+  } else if (kind === 'csv') {
+    downloadBlob(rowsToCsv(result.rows, result.headers), `${base}.csv`, 'text/csv;charset=utf-8');
+  } else if (kind === 'json') {
+    downloadBlob(JSON.stringify(result.rows, null, 2), `${base}.json`, 'application/json;charset=utf-8');
+  }
+}
+
 onMounted(() => {
   fetchToken();
 });
@@ -626,7 +671,19 @@ onMounted(() => {
       </Form>
 
       <template v-if="userOutputVar.users.length">
-        <h3>查询结果</h3>
+        <h3 class="section-header">
+          <span>查询结果</span>
+          <Dropdown @on-click="(k) => onDownload('user', k)" trigger="click">
+            <Button size="small">下载结果 <Icon type="ios-arrow-down" /></Button>
+            <template #list>
+              <DropdownMenu>
+                <DropdownItem name="raw">原始格式 (.txt)</DropdownItem>
+                <DropdownItem name="csv">csv 格式 (.csv)</DropdownItem>
+                <DropdownItem name="json">json 格式 (.json)</DropdownItem>
+              </DropdownMenu>
+            </template>
+          </Dropdown>
+        </h3>
         <div class="table-toolbar">
           <span class="table-toolbar-label">显示字段</span>
           <Select v-model="userShownCols" multiple filterable placeholder="选择要显示的字段" style="flex:1;">
@@ -703,7 +760,19 @@ onMounted(() => {
           </template>
         </Table>
 
-        <h3>查询结果</h3>
+        <h3 class="section-header">
+          <span>查询结果</span>
+          <Dropdown @on-click="(k) => onDownload('event', k)" trigger="click">
+            <Button size="small">下载结果 <Icon type="ios-arrow-down" /></Button>
+            <template #list>
+              <DropdownMenu>
+                <DropdownItem name="raw">原始格式 (.txt)</DropdownItem>
+                <DropdownItem name="csv">csv 格式 (.csv)</DropdownItem>
+                <DropdownItem name="json">json 格式 (.json)</DropdownItem>
+              </DropdownMenu>
+            </template>
+          </Dropdown>
+        </h3>
         <Form :label-width="80">
           <FormItem label="显示字段">
             <Select v-model="eventShownCols" multiple filterable placeholder="选择要显示的字段">
@@ -755,6 +824,11 @@ h3 {
   margin: 16px 0 8px;
   padding-bottom: 4px;
   border-bottom: 1px solid #e8e8e8;
+}
+h3.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 :deep(.ivu-form-inline .ivu-form-item) {

@@ -640,7 +640,7 @@ onMounted(() => {
       <template v-if="userOutputVar.users.length">
         <h3 class="section-header">
           <span>查询结果</span>
-          <Dropdown @on-click="(k) => onDownload('user', k)" trigger="click">
+          <Dropdown @on-click="(k) => onDownload('user', k)" trigger="click" transfer>
             <Button size="small">下载结果 <Icon type="ios-arrow-down" /></Button>
             <template #list>
               <DropdownMenu>
@@ -688,11 +688,11 @@ onMounted(() => {
         </FormItem>
         <FormItem>
           <DatePicker v-model="eventInputVar.startTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
-            placeholder="开始(UTC)" style="width: 200px" />
+            transfer placeholder="开始(UTC)" style="width: 200px" />
         </FormItem>
         <FormItem>
           <DatePicker v-model="eventInputVar.endTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
-            placeholder="结束(UTC)" style="width: 200px" />
+            transfer placeholder="结束(UTC)" style="width: 200px" />
         </FormItem>
         <FormItem>
           <InputNumber v-model="eventInputVar.maxLimit" :min="1" :max="100000" style="width: 120px" />
@@ -728,7 +728,7 @@ onMounted(() => {
 
         <h3 class="section-header">
           <span>查询结果</span>
-          <Dropdown @on-click="(k) => onDownload('event', k)" trigger="click">
+          <Dropdown @on-click="(k) => onDownload('event', k)" trigger="click" transfer>
             <Button size="small">下载结果 <Icon type="ios-arrow-down" /></Button>
             <template #list>
               <DropdownMenu>
@@ -749,7 +749,7 @@ onMounted(() => {
               <Input v-model="eventFilterVar.conditionText" clearable
                 placeholder='合法的 js，例如 x["#event_name"]=="add_items" && x.clienttime.startsWith("2024")'
                 style="flex:1;" />
-              <Dropdown @on-click="onClickQuickSearch" trigger="click">
+              <Dropdown @on-click="onClickQuickSearch" trigger="click" transfer>
                 <Button>快捷查询 <Icon type="ios-arrow-down" /></Button>
                 <template #list>
                   <DropdownMenu>

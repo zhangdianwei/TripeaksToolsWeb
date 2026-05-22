@@ -605,7 +605,7 @@ onMounted(() => {
       <h3>输入</h3>
       <Form inline :label-width="0">
         <FormItem>
-          <Select v-model="userInputVar.projectName" style="width: 160px">
+          <Select v-model="userInputVar.projectName" transfer style="width: 160px">
             <Option v-for="name in projectNames" :key="name" :value="name">{{ name }}</Option>
           </Select>
         </FormItem>
@@ -652,7 +652,7 @@ onMounted(() => {
         </h3>
         <div class="table-toolbar">
           <span class="table-toolbar-label">显示字段</span>
-          <Select v-model="userShownCols" multiple filterable placeholder="选择要显示的字段" style="flex:1;">
+          <Select v-model="userShownCols" multiple filterable transfer placeholder="选择要显示的字段" style="flex:1;">
             <Option v-for="name in userAllColNames" :key="name" :value="name">{{ name }}</Option>
           </Select>
         </div>
@@ -667,7 +667,7 @@ onMounted(() => {
       <h3>输入</h3>
       <Form inline :label-width="0">
         <FormItem>
-          <Select v-model="eventInputVar.projectName" style="width: 160px">
+          <Select v-model="eventInputVar.projectName" transfer style="width: 160px">
             <Option v-for="name in projectNames" :key="name" :value="name">{{ name }}</Option>
           </Select>
         </FormItem>
@@ -740,7 +740,7 @@ onMounted(() => {
         </h3>
         <Form :label-width="80">
           <FormItem label="显示字段">
-            <Select v-model="eventShownCols" multiple filterable placeholder="选择要显示的字段">
+            <Select v-model="eventShownCols" multiple filterable transfer placeholder="选择要显示的字段">
               <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
             </Select>
           </FormItem>
@@ -762,10 +762,10 @@ onMounted(() => {
             </div>
           </FormItem>
           <FormItem label="排序">
-            <Select v-model="eventFilterVar.sortColName" filterable style="width: 200px;">
+            <Select v-model="eventFilterVar.sortColName" filterable transfer style="width: 200px;">
               <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
             </Select>
-            <Select v-model="eventFilterVar.sortCategory" style="width: 90px; margin-left: 4px;">
+            <Select v-model="eventFilterVar.sortCategory" transfer style="width: 90px; margin-left: 4px;">
               <Option value="升序">升序</Option>
               <Option value="降序">降序</Option>
             </Select>

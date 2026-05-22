@@ -168,7 +168,7 @@ function computeColMeta(parsed) {
 // 1. 用户信息输入
 // ==========================================================
 const userInputVar = reactive({
-  userInput: 'UKDVACcgbe',
+  userInput: '',
   projectName: 'Tripeaks1',
   isUserSearching: false,
 });
@@ -320,7 +320,7 @@ function getDefaultEventStart() {
 
 const eventInputVar = reactive({
   projectName: 'Tripeaks1',
-  userInput: 'UKDVACcgbe',
+  userInput: '',
   startTime: getDefaultEventStart(),
   endTime: new Date(),
   maxLimit: 5000,
@@ -442,8 +442,7 @@ async function onClickSearchEvent() {
       errorMsg.value = '请输入 id 并选择起止时间';
       return;
     }
-    // 测试阶段：直接读 public/easy_shushu/event.txt
-    const text = await (await fetch('easy_shushu/event.txt')).text();
+    const text = await fetchServer(sql);
     if (!text) { errorMsg.value = '无返回'; return; }
     if (text.includes('查询似乎出现了一些问题')) { errorMsg.value = text; return; }
     const parsed = parseShushuResponse(text);
@@ -620,8 +619,6 @@ function onDownload(source, kind) {
     downloadBlob(result.raw, `${base}.txt`, 'text/plain;charset=utf-8');
   } else if (kind === 'csv') {
     downloadBlob(rowsToCsv(result.rows, result.headers), `${base}.csv`, 'text/csv;charset=utf-8');
-  } else if (kind === 'json') {
-    downloadBlob(JSON.stringify(result.rows, null, 2), `${base}.json`, 'application/json;charset=utf-8');
   }
 }
 
@@ -679,7 +676,6 @@ onMounted(() => {
               <DropdownMenu>
                 <DropdownItem name="raw">原始格式 (.txt)</DropdownItem>
                 <DropdownItem name="csv">csv 格式 (.csv)</DropdownItem>
-                <DropdownItem name="json">json 格式 (.json)</DropdownItem>
               </DropdownMenu>
             </template>
           </Dropdown>
@@ -768,7 +764,6 @@ onMounted(() => {
               <DropdownMenu>
                 <DropdownItem name="raw">原始格式 (.txt)</DropdownItem>
                 <DropdownItem name="csv">csv 格式 (.csv)</DropdownItem>
-                <DropdownItem name="json">json 格式 (.json)</DropdownItem>
               </DropdownMenu>
             </template>
           </Dropdown>

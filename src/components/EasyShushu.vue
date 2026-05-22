@@ -229,7 +229,7 @@ const userOutputVar = reactive({
   allUserIds: [],
 });
 
-const userDefaultShownCols = ['ttid', '#account_id', '#distinct_id', '#user_id', 'user_level'];
+const userDefaultShownCols = ['ttid', '#account_id', '#distinct_id', '#user_id', 'user_level', 'user_name'];
 const userShownColsText = ref(userDefaultShownCols.join(','));
 
 const userAllColNames = computed(() => Object.keys(userColMeta.value.allColConfigs));

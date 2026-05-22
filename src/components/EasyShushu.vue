@@ -2,8 +2,8 @@
 import { ref, reactive, computed, shallowRef, onMounted } from "vue";
 import {
   Button, Input, Select, Option, InputNumber, DatePicker,
-  Alert, Form, FormItem, Card, Table, Page, Tag, Tooltip, Message,
-  Collapse, Panel, Divider, Tabs, TabPane,
+  Alert, Form, FormItem, Table, Page, Tooltip, Message,
+  Tabs, TabPane,
   Dropdown, DropdownMenu, DropdownItem, Icon,
 } from "view-ui-plus";
 
@@ -168,7 +168,7 @@ function computeColMeta(parsed) {
 // 1. 用户信息输入
 // ==========================================================
 const userInputVar = reactive({
-  userInput: 'C1m3U3ZoYm\t772dd71ac9623749',
+  userInput: 'UKDVACcgbe',
   projectName: 'Tripeaks1',
   isUserSearching: false,
 });
@@ -290,10 +290,10 @@ async function onClickSearchUser() {
       errorMsg.value = '请输入至少一个 id';
       return;
     }
-    // const text = await fetchServer(sql);
-    const text = `{"data":{"headers":["#user_id","#account_id","#distinct_id","#active_time","#reg_time","#user_operation","#server_time","#update_time","#kafka_offset","#event_date","network","adgroup","trackertoken","platform","creative","isnewaeo2","devidemodel","isaeo","countrycode","campaign","adid","trackername","createtime","firstpurchasetime","totaliap","usercoins","firstbuytime","#distinct_list","fbname","canplaylevel","email_board","email_fb","#dw_create_time","#dw_update_time","#uuid","lastlogintime","gameversion","lastpurchasetime","lastlogintimedate","lastpurchasetimedate","adjust_adid","adjust_installed_at","adjust_ip_address","adjust_country","adjust_device_type","adjust_os_name","adjust_adgroup_name","adjust_device_name","adjust_language","adjust_campaign_name","adjust_creative_name","adjust_os_version","adjust_app_version_short","adjust_app_version","adjust_idfv","adjust_idfa","adjust_network_name","distinctid","adjust_android_id","app_version","gaid","timezone","notification_status","language","device_name","device_id","os_version","firebase_id","firebase_fcm_token","res_version","os_name","apns_token","att_status","idfv","idfa","first_app_version","adjust_gaid","last_launch_time","user_step","continuity_login","user_day_age","user_iap_total_cent","user_minutes_age","user_iap_times","max_iap_revenue","is_debug","user_reward_video_times","user_interstitial_video_times","user_coin","user_iap_total_usd","user_interstitial_revenue_usd","user_id","user_reward_revenue_usd","user_level","max_iap_revenue_usd","last_iap_time","first_iap_time","first_launch_time","userid","first_interstitial_video_time","fb_name","first_reward_video_time","fb_mail","first_iap_user_level","meta_campaign_name","meta_ad_set_name","meta_ad_name","adjust_timezone","fb_ad_name","fb_campaign_name","fb_ad_set_name","pay_coins","accountid","max_items_attempt","remaining_spending","user_name"]},"return_code":0,"return_message":"success","showStackMessage":false}
-[1491513470724612096,"C1m3U3ZoYm",null,"2026-04-08 11:02:00.786","2026-04-08 11:02:00.786","user_set","2026-04-08 19:02:06.527","2026-04-08 12:02:03.814",39624964340,20260410,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,"2026-04-08 19:02:23.773","02357b40-91c1-4f97-8eb5-d604a393f70d",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,190.0,null,null,null,null,null,null,null,null,null,null,null,null,"C1m3U3ZoYm",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]
-[1491513447303614476,null,"772dd71ac9623749","2026-04-08 12:01:52.695",null,"user_set","2026-04-08 19:02:29.827","2026-04-08 19:02:29.827",39624966590,20260410,null,null,null,"googleplay",null,null,null,null,"GB",null,null,null,"2026-04-08 12:01:59.114",null,null,null,null,["772dd71ac9623749"],null,null,null,null,null,"2026-04-08 19:03:22.785","09f1fecf-9ba0-0963-a617-5bab5616a4ec",1775646119686,null,null,"2026-04-08 12:01:59.686",null,"62351a3d7fd15320ff191b10c7083604","1775646117","80.194.229.181","gb","tablet","android","Google Ads ACI (2awwikm)","GalaxyTabS9FE","en","Store Rule","TP-AOS-WW-UAC3.0-mix-23.08.08-jy (20438022610) (13ho03u0)","16","1.222063.0","1.222063.0",null,null,"Unverified Devices","772dd71ac9623749",null,"1.222063.0","fa9fd7ea-e5b6-42b7-a0be-2a894a6f12da","-1","on","en","SM-X516B","772dd71ac9623749","16","dqStQ1J0RY2zW8RSSgk6kf","dqStQ1J0RY2zW8RSSgk6kf:APA91bESoYOzZ-qocm_iWL4H3k_yQdSWfwh4hlB0ZMcdVb90nl7e5PVoCPn9A3wRq4zO0qFhciGeT84ShAJtj5Bj0KvZCu99E4d6ZUkHtknRihbzv98nCmE","222063.0","android",null,null,null,null,"1.222063.0","fa9fd7ea-e5b6-42b7-a0be-2a894a6f12da",null,170.0,1.0,1.0,0.0,0.0,0.0,0.0,false,0.0,0.0,5000.0,0.0,0.0,"772dd71ac9623749",0.0,1.0,0.0,null,null,"2026-04-08 12:01:52.698","C1m3U3ZoYm",null,null,null,null,null,null,null,null,"UTC+0100",null,null,null,0.0,"772dd71ac9623749",0.0,null,null]`
+    const text = await fetchServer(sql);
+//     const text = `{"data":{"headers":["#user_id","#account_id","#distinct_id","#active_time","#reg_time","#user_operation","#server_time","#update_time","#kafka_offset","#event_date","network","adgroup","trackertoken","platform","creative","isnewaeo2","devidemodel","isaeo","countrycode","campaign","adid","trackername","createtime","firstpurchasetime","totaliap","usercoins","firstbuytime","#distinct_list","fbname","canplaylevel","email_board","email_fb","#dw_create_time","#dw_update_time","#uuid","lastlogintime","gameversion","lastpurchasetime","lastlogintimedate","lastpurchasetimedate","adjust_adid","adjust_installed_at","adjust_ip_address","adjust_country","adjust_device_type","adjust_os_name","adjust_adgroup_name","adjust_device_name","adjust_language","adjust_campaign_name","adjust_creative_name","adjust_os_version","adjust_app_version_short","adjust_app_version","adjust_idfv","adjust_idfa","adjust_network_name","distinctid","adjust_android_id","app_version","gaid","timezone","notification_status","language","device_name","device_id","os_version","firebase_id","firebase_fcm_token","res_version","os_name","apns_token","att_status","idfv","idfa","first_app_version","adjust_gaid","last_launch_time","user_step","continuity_login","user_day_age","user_iap_total_cent","user_minutes_age","user_iap_times","max_iap_revenue","is_debug","user_reward_video_times","user_interstitial_video_times","user_coin","user_iap_total_usd","user_interstitial_revenue_usd","user_id","user_reward_revenue_usd","user_level","max_iap_revenue_usd","last_iap_time","first_iap_time","first_launch_time","userid","first_interstitial_video_time","fb_name","first_reward_video_time","fb_mail","first_iap_user_level","meta_campaign_name","meta_ad_set_name","meta_ad_name","adjust_timezone","fb_ad_name","fb_campaign_name","fb_ad_set_name","pay_coins","accountid","max_items_attempt","remaining_spending","user_name"]},"return_code":0,"return_message":"success","showStackMessage":false}
+// [1491513470724612096,"C1m3U3ZoYm",null,"2026-04-08 11:02:00.786","2026-04-08 11:02:00.786","user_set","2026-04-08 19:02:06.527","2026-04-08 12:02:03.814",39624964340,20260410,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,"2026-04-08 19:02:23.773","02357b40-91c1-4f97-8eb5-d604a393f70d",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,190.0,null,null,null,null,null,null,null,null,null,null,null,null,"C1m3U3ZoYm",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]
+// [1491513447303614476,null,"772dd71ac9623749","2026-04-08 12:01:52.695",null,"user_set","2026-04-08 19:02:29.827","2026-04-08 19:02:29.827",39624966590,20260410,null,null,null,"googleplay",null,null,null,null,"GB",null,null,null,"2026-04-08 12:01:59.114",null,null,null,null,["772dd71ac9623749"],null,null,null,null,null,"2026-04-08 19:03:22.785","09f1fecf-9ba0-0963-a617-5bab5616a4ec",1775646119686,null,null,"2026-04-08 12:01:59.686",null,"62351a3d7fd15320ff191b10c7083604","1775646117","80.194.229.181","gb","tablet","android","Google Ads ACI (2awwikm)","GalaxyTabS9FE","en","Store Rule","TP-AOS-WW-UAC3.0-mix-23.08.08-jy (20438022610) (13ho03u0)","16","1.222063.0","1.222063.0",null,null,"Unverified Devices","772dd71ac9623749",null,"1.222063.0","fa9fd7ea-e5b6-42b7-a0be-2a894a6f12da","-1","on","en","SM-X516B","772dd71ac9623749","16","dqStQ1J0RY2zW8RSSgk6kf","dqStQ1J0RY2zW8RSSgk6kf:APA91bESoYOzZ-qocm_iWL4H3k_yQdSWfwh4hlB0ZMcdVb90nl7e5PVoCPn9A3wRq4zO0qFhciGeT84ShAJtj5Bj0KvZCu99E4d6ZUkHtknRihbzv98nCmE","222063.0","android",null,null,null,null,"1.222063.0","fa9fd7ea-e5b6-42b7-a0be-2a894a6f12da",null,170.0,1.0,1.0,0.0,0.0,0.0,0.0,false,0.0,0.0,5000.0,0.0,0.0,"772dd71ac9623749",0.0,1.0,0.0,null,null,"2026-04-08 12:01:52.698","C1m3U3ZoYm",null,null,null,null,null,null,null,null,"UTC+0100",null,null,null,0.0,"772dd71ac9623749",0.0,null,null]`
     if (!text) { errorMsg.value = '无返回'; return; }
     if (text.includes('查询似乎出现了一些问题')) { errorMsg.value = text; return; }
     const parsed = parseShushuResponse(text);
@@ -319,24 +319,28 @@ function getDefaultEventStart() {
 }
 
 const eventInputVar = reactive({
+  projectName: 'Tripeaks1',
+  userInput: 'UKDVACcgbe',
   startTime: getDefaultEventStart(),
   endTime: new Date(),
   maxLimit: 5000,
   isEventSearching: false,
 });
 
+const parsedEventInput = computed(() => parseUserInputText(eventInputVar.userInput));
+
 const eventQuerySql = computed(() => {
-  const project = projectConfigs[userInputVar.projectName];
+  const project = projectConfigs[eventInputVar.projectName];
   if (!project) return '';
-  const accs = userOutputVar.allAccountIds;
-  const dists = userOutputVar.allDistinctIds;
-  if (!accs.length && !dists.length) return '-- 请先查询用户';
+  const groups = parsedEventInput.value;
+  const conds = [];
+  if (groups.account_id.length) conds.push(`"#account_id" IN (${groups.account_id.map(sqlStr).join(',')})`);
+  if (groups.distinct_id.length) conds.push(`"#distinct_id" IN (${groups.distinct_id.map(sqlStr).join(',')})`);
+  if (groups.user_id.length) conds.push(`"#user_id" IN (${groups.user_id.join(',')})`);
+  if (!conds.length) return '-- 请输入至少一个 id';
   const start = eventInputVar.startTime;
   const end = eventInputVar.endTime;
   if (!start || !end) return '-- 请选择起止时间';
-  const conds = [];
-  if (accs.length) conds.push(`"#account_id" IN (${accs.map(sqlStr).join(',')})`);
-  if (dists.length) conds.push(`"#distinct_id" IN (${dists.map(sqlStr).join(',')})`);
   const partStart = dateToUtcDate(addDays(start, -1));
   const partEnd = dateToUtcDate(addDays(end, 1));
   const startIso = dateToUtcIso(start);
@@ -362,42 +366,69 @@ const eventQueryResult = shallowRef({ raw: '', headers: [], rows: [] });
 const eventColMeta = shallowRef({ allColConfigs: {}, sameValueColConfigs: {}, goodColConfigs: {} });
 const eventCheckLogs = ref(null);
 
+const eventStatsColumns = [
+  { title: 'name', key: 'label', width: 260 },
+  { title: 'value', slot: 'eventStatsValues' },
+];
+const eventStatsRows = computed(() => {
+  const e = eventCheckLogs.value;
+  if (!e) return [];
+
+  const totalText = e.total >= eventInputVar.maxLimit
+    ? `${e.total}（考虑适当放大 sql max limit）`
+    : String(e.total);
+
+  const allIds = [...e.allUserIds, ...e.allAccountIds, ...e.allDistinctIds];
+  const userBaselineRun = userOutputVar.users.length > 0;
+  const newIdsSet = new Set();
+  if (userBaselineRun) {
+    for (const id of e.allUserIds) if (!userOutputVar.allUserIds.includes(id)) newIdsSet.add(id);
+    for (const id of e.allAccountIds) if (!userOutputVar.allAccountIds.includes(id)) newIdsSet.add(id);
+    for (const id of e.allDistinctIds) if (!userOutputVar.allDistinctIds.includes(id)) newIdsSet.add(id);
+  }
+
+  const errorText = `errlog(${e.errlog}), jserror_new(${e.jsError})`;
+
+  return [
+    { kind: 'text', label: '日志总数', values: totalText },
+    { kind: 'ids', label: '#user_id/#account_id/#distinct_id', allIds, newIdsSet },
+    { kind: 'text', label: '是否有错误', values: errorText },
+    { kind: 'text', label: 'city', values: e.cities.join(', ') },
+  ];
+});
+
 function runEventChecks(parsed) {
-  const seenAccount = new Set();
-  const seenDistinct = new Set();
-  const seenUser = new Set();
   const seenCity = new Set();
+  const accSet = new Set();
+  const distSet = new Set();
+  const userSet = new Set();
   let errlog = 0;
   let jsError = 0;
 
   for (const row of parsed.rows) {
-    if (row['#account_id']) seenAccount.add(row['#account_id']);
-    if (row.c_userid) seenAccount.add(row.c_userid);
-    if (row['#distinct_id']) seenDistinct.add(row['#distinct_id']);
-    if (row.c_clientid) seenDistinct.add(row.c_clientid);
-    if (row['#user_id'] != null) seenUser.add(String(row['#user_id']));
     if (row['#city']) seenCity.add(row['#city']);
     if (row['#event_name'] === 'errlog') errlog++;
     if (row['#event_name'] === 'jserror_new') jsError++;
+    for (const f of idCandidateFields) {
+      const v = row[f];
+      if (v == null || v === '') continue;
+      const s = String(v);
+      const kind = classifyId(s);
+      if (kind === 'user_id') userSet.add(s);
+      else if (kind === 'distinct_id') distSet.add(s);
+      else accSet.add(s);
+    }
   }
-
-  const accounts = [...seenAccount];
-  const distincts = [...seenDistinct];
-  const userIds = [...seenUser];
-  const cities = [...seenCity];
 
   return {
     total: parsed.rows.length,
-    accounts,
-    distincts,
-    userIds,
-    cities,
+    cities: [...seenCity],
     errlog,
     jsError,
-    newAccount: accounts.filter(x => !userOutputVar.allAccountIds.includes(x)),
-    newDistinct: distincts.filter(x => !userOutputVar.allDistinctIds.includes(x)),
-    newUser: userIds.filter(x => !userOutputVar.allUserIds.includes(x)),
-    crossCity: cities.length > 1,
+    crossCity: seenCity.size > 1,
+    allAccountIds: [...accSet],
+    allDistinctIds: [...distSet],
+    allUserIds: [...userSet],
   };
 }
 
@@ -408,10 +439,11 @@ async function onClickSearchEvent() {
   try {
     const sql = eventQuerySql.value;
     if (!sql || sql.startsWith('--')) {
-      errorMsg.value = '请先查询用户并选择时间';
+      errorMsg.value = '请输入 id 并选择起止时间';
       return;
     }
-    const text = await fetchServer(sql);
+    // 测试阶段：直接读 public/easy_shushu/event.txt
+    const text = await (await fetch('easy_shushu/event.txt')).text();
     if (!text) { errorMsg.value = '无返回'; return; }
     if (text.includes('查询似乎出现了一些问题')) { errorMsg.value = text; return; }
     const parsed = parseShushuResponse(text);
@@ -620,105 +652,119 @@ onMounted(() => {
     </TabPane>
 
     <TabPane label="查事件" name="event">
-      <h3>2. 事件查询</h3>
-  <Form inline :label-width="80">
-    <FormItem label="开始(UTC)">
-      <DatePicker v-model="eventInputVar.startTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
-        placeholder="UTC" style="width: 200px" />
-    </FormItem>
-    <FormItem label="结束(UTC)">
-      <DatePicker v-model="eventInputVar.endTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
-        placeholder="UTC" style="width: 200px" />
-    </FormItem>
-    <FormItem label="最大条数">
-      <InputNumber v-model="eventInputVar.maxLimit" :min="1" :max="100000" style="width: 120px" />
-    </FormItem>
-    <FormItem>
-      <Button type="primary" :loading="eventInputVar.isEventSearching" @click="onClickSearchEvent">查询事件</Button>
-    </FormItem>
-  </Form>
-  <Collapse simple>
-    <Panel name="eventSql">
-      查询事件 SQL
-      <template #content>
-        <Input type="textarea" :value="eventQuerySql" :autosize="{ minRows: 4, maxRows: 16 }" readonly />
+      <h3>输入</h3>
+      <Form inline :label-width="0">
+        <FormItem>
+          <Select v-model="eventInputVar.projectName" style="width: 160px">
+            <Option v-for="name in projectNames" :key="name" :value="name">{{ name }}</Option>
+          </Select>
+        </FormItem>
+        <FormItem>
+          <Input v-model="eventInputVar.userInput" style="width: 400px"
+            placeholder="任意account_id/distinct_id/user_id（逗号/空格分隔）">
+            <template #suffix>
+              <Tooltip placement="bottom-end" transfer>
+                <Icon type="ios-information-circle-outline" style="cursor: pointer;" />
+                <template #content>
+                  <div>account_id × {{ parsedEventInput.account_id.length }}：{{ parsedEventInput.account_id.join(', ') || '-' }}</div>
+                  <div>distinct_id × {{ parsedEventInput.distinct_id.length }}：{{ parsedEventInput.distinct_id.join(', ') || '-' }}</div>
+                  <div>user_id × {{ parsedEventInput.user_id.length }}：{{ parsedEventInput.user_id.join(', ') || '-' }}</div>
+                </template>
+              </Tooltip>
+            </template>
+          </Input>
+        </FormItem>
+        <FormItem>
+          <DatePicker v-model="eventInputVar.startTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
+            placeholder="开始(UTC)" style="width: 200px" />
+        </FormItem>
+        <FormItem>
+          <DatePicker v-model="eventInputVar.endTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
+            placeholder="结束(UTC)" style="width: 200px" />
+        </FormItem>
+        <FormItem>
+          <InputNumber v-model="eventInputVar.maxLimit" :min="1" :max="100000" style="width: 120px" />
+        </FormItem>
+        <FormItem>
+          <Tooltip placement="bottom" transfer :max-width="700">
+            <Button shape="circle" @click="copyToClipboard(eventQuerySql)">sql</Button>
+            <template #content>
+              <pre style="margin:0; white-space:pre-wrap; word-break:break-all;">{{ eventQuerySql }}</pre>
+            </template>
+          </Tooltip>
+        </FormItem>
+        <FormItem>
+          <Button type="primary" :loading="eventInputVar.isEventSearching" @click="onClickSearchEvent">查询事件</Button>
+        </FormItem>
+      </Form>
+
+      <template v-if="eventCheckLogs">
+        <h3>统计信息</h3>
+        <Table :border="true" :columns="eventStatsColumns" :data="eventStatsRows" size="small">
+          <template #eventStatsValues="{ row }">
+            <template v-if="row.kind === 'ids'">
+              <template v-if="row.allIds.length">
+                <span v-for="(id, i) in row.allIds" :key="id">
+                  <span :class="{ 'new-id': row.newIdsSet.has(id) }">{{ id }}</span><span v-if="i < row.allIds.length - 1">, </span>
+                </span>
+              </template>
+              <span v-else style="color:#999">-</span>
+            </template>
+            <template v-else>{{ row.values }}</template>
+          </template>
+        </Table>
+
+        <h3>查询结果</h3>
+        <Form inline :label-width="80">
+          <FormItem label="模板">
+            <Dropdown v-for="drop in quickTemplate" :key="drop.name" style="margin-right: 8px;"
+              @on-click="(item) => onClickQuickTemplate(drop, item)">
+              <Button>{{ drop.name }} <Icon type="ios-arrow-down" /></Button>
+              <template #list>
+                <DropdownMenu>
+                  <DropdownItem v-for="item in drop.children" :key="item.name" :name="item.name">{{ item.name }}
+                  </DropdownItem>
+                </DropdownMenu>
+              </template>
+            </Dropdown>
+          </FormItem>
+          <FormItem label="排序">
+            <Select v-model="eventFilterVar.sortColName" filterable style="width: 200px;">
+              <Option value="ttid">ttid</Option>
+              <Option value="event_time_utc">event_time_utc</Option>
+              <Option value="clienttime">clienttime</Option>
+              <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
+            </Select>
+            <Select v-model="eventFilterVar.sortCategory" style="width: 90px; margin-left: 4px;">
+              <Option value="升序">升序</Option>
+              <Option value="降序">降序</Option>
+            </Select>
+          </FormItem>
+        </Form>
+        <Form :label-width="80">
+          <FormItem label="显示字段">
+            <Select v-model="eventShownCols" multiple filterable placeholder="选择要显示的字段">
+              <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
+            </Select>
+          </FormItem>
+          <FormItem label="过滤条件">
+            <Input v-model="eventFilterVar.conditionText" clearable
+              placeholder='合法的 js，例如 x["#event_name"]=="add_items" && x.clienttime.startsWith("2024")'>
+              <template #append>
+                <Button type="primary" @click="onClickApplyFilter">应用</Button>
+              </template>
+            </Input>
+          </FormItem>
+          <FormItem label="分页">
+            <Page show-sizer show-total :total="eventFilterResult.filtered.length" :current="eventFilterVar.curPage"
+              :page-size="eventFilterVar.pageSize" :page-size-opts="[10, 50, 100, 500]" @on-change="onPageChange"
+              @on-page-size-change="onPageSizeChange" />
+            <span style="margin-left: 8px; color:#999;">符合 {{ eventFilterResult.filtered.length }} / 总数 {{
+              eventQueryResult.rows.length }}</span>
+          </FormItem>
+        </Form>
+        <Table :border="true" :columns="wantShowColConfigs" :data="eventDisplayedRows" size="small" />
       </template>
-    </Panel>
-  </Collapse>
-
-  <h3>3. 事件检测</h3>
-  <div v-if="!eventCheckLogs" style="color:#999">尚未查询事件</div>
-  <template v-else>
-    <div>
-      <Tag color="default">总数 {{ eventCheckLogs.total }}</Tag>
-      <Tag v-if="eventCheckLogs.errlog" color="orange">errlog {{ eventCheckLogs.errlog }}</Tag>
-      <Tag v-if="eventCheckLogs.jsError" color="orange">jserror_new {{ eventCheckLogs.jsError }}</Tag>
-      <Tag v-for="c in eventCheckLogs.cities" :key="`c-${c}`" :color="eventCheckLogs.crossCity ? 'red' : 'default'">city: {{ c }}</Tag>
-    </div>
-    <Alert v-if="eventCheckLogs.newAccount.length" type="warning" show-icon>
-      新 account_id: {{ eventCheckLogs.newAccount.join(', ') }}
-    </Alert>
-    <Alert v-if="eventCheckLogs.newDistinct.length" type="warning" show-icon>
-      新 distinct_id: {{ eventCheckLogs.newDistinct.join(', ') }}
-    </Alert>
-    <Alert v-if="eventCheckLogs.newUser.length" type="warning" show-icon>
-      新 user_id: {{ eventCheckLogs.newUser.join(', ') }}
-    </Alert>
-    <Alert v-if="eventCheckLogs.crossCity" type="warning" show-icon>
-      涉及多个 city: {{ eventCheckLogs.cities.join(', ') }}
-    </Alert>
-  </template>
-
-  <h3>4. 事件过滤</h3>
-  <Form inline :label-width="80">
-    <FormItem label="模板">
-      <Dropdown v-for="drop in quickTemplate" :key="drop.name" style="margin-right: 8px;"
-        @on-click="(item) => onClickQuickTemplate(drop, item)">
-        <Button>{{ drop.name }} <Icon type="ios-arrow-down" /></Button>
-        <template #list>
-          <DropdownMenu>
-            <DropdownItem v-for="item in drop.children" :key="item.name" :name="item.name">{{ item.name }}
-            </DropdownItem>
-          </DropdownMenu>
-        </template>
-      </Dropdown>
-    </FormItem>
-    <FormItem label="排序">
-      <Select v-model="eventFilterVar.sortColName" filterable style="width: 200px;">
-        <Option value="ttid">ttid</Option>
-        <Option value="event_time_utc">event_time_utc</Option>
-        <Option value="clienttime">clienttime</Option>
-        <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
-      </Select>
-      <Select v-model="eventFilterVar.sortCategory" style="width: 90px; margin-left: 4px;">
-        <Option value="升序">升序</Option>
-        <Option value="降序">降序</Option>
-      </Select>
-    </FormItem>
-  </Form>
-  <Form :label-width="80">
-    <FormItem label="显示字段">
-      <Select v-model="eventShownCols" multiple filterable placeholder="选择要显示的字段">
-        <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
-      </Select>
-    </FormItem>
-    <FormItem label="过滤条件">
-      <Input v-model="eventFilterVar.conditionText" clearable
-        placeholder='合法的 js，例如 x["#event_name"]=="add_items" && x.clienttime.startsWith("2024")'>
-        <template #append>
-          <Button type="primary" @click="onClickApplyFilter">应用</Button>
-        </template>
-      </Input>
-    </FormItem>
-    <FormItem label="分页">
-      <Page show-sizer show-total :total="eventFilterResult.filtered.length" :current="eventFilterVar.curPage"
-        :page-size="eventFilterVar.pageSize" :page-size-opts="[10, 50, 100, 500]" @on-change="onPageChange"
-        @on-page-size-change="onPageSizeChange" />
-      <span style="margin-left: 8px; color:#999;">符合 {{ eventFilterResult.filtered.length }} / 总数 {{
-        eventQueryResult.rows.length }}</span>
-    </FormItem>
-  </Form>
-  <Table :border="true" :columns="wantShowColConfigs" :data="eventDisplayedRows" size="small" />
     </TabPane>
   </Tabs>
 </template>
@@ -753,5 +799,10 @@ h3 {
 
 :deep(.ivu-table) {
   font-size: 14px;
+}
+
+.new-id {
+  color: #ed4014;
+  font-weight: bold;
 }
 </style>

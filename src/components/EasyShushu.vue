@@ -108,7 +108,7 @@ function parseShushuResponse(text) {
 
 // ============ 列配置（事件） ============
 const shouldRemoveColNames = ['country', 'new', 'fps', 'uuid', 'app_version'];
-const fixedColNames = ['ttid', 'event_time_utc', '#event_name'];
+const fixedColNames = ['ttid', 'event_time_utc', '#event_name', 'activity_type', 'activity_step', 'add_source', 'sub_add_source'];
 const commonTemplate1ColNames = fixedColNames.concat(['params']);
 
 const defColConfigs = {
@@ -124,7 +124,7 @@ function makeDefaultColConfig(headerName) {
   return {
     key: headerName,
     title: headerName,
-    width: 300,
+    width: 200,
     resizable: true,
   };
 }
@@ -528,55 +528,44 @@ const eventDisplayedRows = computed(() => {
   return rows.slice(start, start + eventFilterVar.pageSize);
 });
 
-// 模板
-const quickTemplate = [
+// 快捷查询
+const quickSearches = [
   {
-    name: '字段模板',
-    children: [
-      { name: '通用模板1', callback: () => { eventFilterVar.wantShowColNamesText = commonTemplate1ColNames.join(','); } },
-      { name: '显示所有字段', callback: () => { eventFilterVar.wantShowColNamesText = allColNames.value.join(','); } },
-      { name: '只显示值不同的字段', callback: () => { eventFilterVar.wantShowColNamesText = goodColNames.value.join(','); } },
-      { name: '只显示值相同的字段', callback: () => { eventFilterVar.wantShowColNamesText = sameValueColNames.value.join(','); } },
-    ],
+    name: '查jserror_new', callback: () => {
+      eventFilterVar.conditionText = `x["#event_name"]=="jserror_new"`;
+      onClickApplyFilter();
+    },
   },
   {
-    name: '快捷查询',
-    children: [
-      {
-        name: '查 jserror_new', callback: () => {
-          eventFilterVar.wantShowColNamesText = fixedColNames.concat(['msg']).join(',');
-          eventFilterVar.conditionText = `x["#event_name"]=="jserror_new"`;
-          onClickApplyFilter();
-        }
-      },
-      {
-        name: '查 errlog', callback: () => {
-          eventFilterVar.wantShowColNamesText = fixedColNames.concat(['errtype', 'msg']).join(',');
-          eventFilterVar.conditionText = `x["#event_name"]=="errlog"`;
-          onClickApplyFilter();
-        }
-      },
-      {
-        name: '查 add_items', callback: () => {
-          eventFilterVar.wantShowColNamesText = fixedColNames.concat(['add_source', 'sub_add_source']).join(',');
-          eventFilterVar.conditionText = `x["#event_name"]=="add_items"`;
-          onClickApplyFilter();
-        }
-      },
-      {
-        name: '查支付购买', callback: () => {
-          eventFilterVar.wantShowColNamesText = fixedColNames.concat(['productid', 'orderid', 'add_source', 'sub_add_source']).join(',');
-          eventFilterVar.conditionText = `["add_items","purchased","payment","ipa_begin","iap_end","iap_restore_begin","iap_verify_begin","subscrib","iap_consume","restore","restore_finish"].indexOf(x["#event_name"])>=0`;
-          onClickApplyFilter();
-        }
-      },
-    ],
+    name: '查errlog', callback: () => {
+      eventFilterVar.conditionText = `x["#event_name"]=="errlog"`;
+      onClickApplyFilter();
+    },
+  },
+  {
+    name: '查add_items', callback: () => {
+      eventFilterVar.conditionText = `x["#event_name"]=="add_items"`;
+      onClickApplyFilter();
+    },
+  },
+  {
+    name: '查支付购买', callback: () => {
+      eventFilterVar.wantShowColNamesText = fixedColNames.concat(['productid', 'orderid', 'add_source', 'sub_add_source']).join(',');
+      eventFilterVar.conditionText = `["add_items","purchased","payment","ipa_begin","iap_end","iap_restore_begin","iap_verify_begin","subscrib","iap_consume","restore","restore_finish"].indexOf(x["#event_name"])>=0`;
+      onClickApplyFilter();
+    },
+  },
+  {
+    name: '查活动日志', callback: () => {
+      eventFilterVar.conditionText = `x['#event_name']=='activity_log'`;
+      onClickApplyFilter();
+    },
   },
 ];
 
-function onClickQuickTemplate(drop, item) {
-  const config = drop.children.find(x => x.name === item);
-  if (config) config.callback();
+function onClickQuickSearch(name) {
+  const item = quickSearches.find(x => x.name === name);
+  if (item) item.callback();
 }
 
 function onPageChange(value) { eventFilterVar.curPage = value; }
@@ -715,32 +704,6 @@ onMounted(() => {
         </Table>
 
         <h3>查询结果</h3>
-        <Form inline :label-width="80" class="filter-toolbar">
-          <FormItem label="模板">
-            <Dropdown v-for="drop in quickTemplate" :key="drop.name" style="margin-right: 8px;"
-              @on-click="(item) => onClickQuickTemplate(drop, item)">
-              <Button>{{ drop.name }} <Icon type="ios-arrow-down" /></Button>
-              <template #list>
-                <DropdownMenu>
-                  <DropdownItem v-for="item in drop.children" :key="item.name" :name="item.name">{{ item.name }}
-                  </DropdownItem>
-                </DropdownMenu>
-              </template>
-            </Dropdown>
-          </FormItem>
-          <FormItem label="排序">
-            <Select v-model="eventFilterVar.sortColName" filterable style="width: 200px;">
-              <Option value="ttid">ttid</Option>
-              <Option value="event_time_utc">event_time_utc</Option>
-              <Option value="clienttime">clienttime</Option>
-              <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
-            </Select>
-            <Select v-model="eventFilterVar.sortCategory" style="width: 90px; margin-left: 4px;">
-              <Option value="升序">升序</Option>
-              <Option value="降序">降序</Option>
-            </Select>
-          </FormItem>
-        </Form>
         <Form :label-width="80">
           <FormItem label="显示字段">
             <Select v-model="eventShownCols" multiple filterable placeholder="选择要显示的字段">
@@ -748,12 +711,30 @@ onMounted(() => {
             </Select>
           </FormItem>
           <FormItem label="过滤条件">
-            <Input v-model="eventFilterVar.conditionText" clearable
-              placeholder='合法的 js，例如 x["#event_name"]=="add_items" && x.clienttime.startsWith("2024")'>
-              <template #append>
-                <Button type="primary" @click="onClickApplyFilter">应用</Button>
-              </template>
-            </Input>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <Input v-model="eventFilterVar.conditionText" clearable
+                placeholder='合法的 js，例如 x["#event_name"]=="add_items" && x.clienttime.startsWith("2024")'
+                style="flex:1;" />
+              <Dropdown @on-click="onClickQuickSearch" trigger="click">
+                <Button>快捷查询 <Icon type="ios-arrow-down" /></Button>
+                <template #list>
+                  <DropdownMenu>
+                    <DropdownItem v-for="item in quickSearches" :key="item.name" :name="item.name">{{ item.name }}
+                    </DropdownItem>
+                  </DropdownMenu>
+                </template>
+              </Dropdown>
+              <Button type="primary" @click="onClickApplyFilter">应用</Button>
+            </div>
+          </FormItem>
+          <FormItem label="排序">
+            <Select v-model="eventFilterVar.sortColName" filterable style="width: 200px;">
+              <Option v-for="name in allColNames" :key="name" :value="name">{{ name }}</Option>
+            </Select>
+            <Select v-model="eventFilterVar.sortCategory" style="width: 90px; margin-left: 4px;">
+              <Option value="升序">升序</Option>
+              <Option value="降序">降序</Option>
+            </Select>
           </FormItem>
           <FormItem label="分页">
             <Page show-sizer show-total :total="eventFilterResult.filtered.length" :current="eventFilterVar.curPage"
@@ -778,10 +759,6 @@ h3 {
 
 :deep(.ivu-form-inline .ivu-form-item) {
   margin-bottom: 0;
-}
-
-.filter-toolbar {
-  margin-bottom: 24px;
 }
 
 .table-toolbar {

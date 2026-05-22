@@ -113,7 +113,7 @@ const commonTemplate1ColNames = fixedColNames.concat(['params']);
 
 const defColConfigs = {
   'ttid': { key: 'ttid', title: 'ttid', width: 80, resizable: true, fixed: 'left' },
-  'event_time_utc': { key: 'event_time_utc', title: 'event_time(utc)', width: 250, resizable: true, fixed: 'left' },
+  'event_time_utc': { key: 'event_time_utc', title: 'event_time_utc', width: 250, resizable: true, fixed: 'left' },
   '#event_time': { key: '#event_time', title: '#event_time', width: 250, resizable: true },
   'clienttime': { key: 'clienttime', title: 'clienttime', width: 250, resizable: true },
   '#event_name': { key: '#event_name', title: '#event_name', width: 200, resizable: true, fixed: 'left' },
@@ -715,7 +715,7 @@ onMounted(() => {
         </Table>
 
         <h3>查询结果</h3>
-        <Form inline :label-width="80">
+        <Form inline :label-width="80" class="filter-toolbar">
           <FormItem label="模板">
             <Dropdown v-for="drop in quickTemplate" :key="drop.name" style="margin-right: 8px;"
               @on-click="(item) => onClickQuickTemplate(drop, item)">
@@ -771,9 +771,17 @@ onMounted(() => {
 
 <style scoped>
 h3 {
-  margin: 12px 0 6px;
+  margin: 16px 0 8px;
   padding-bottom: 4px;
   border-bottom: 1px solid #e8e8e8;
+}
+
+:deep(.ivu-form-inline .ivu-form-item) {
+  margin-bottom: 0;
+}
+
+.filter-toolbar {
+  margin-bottom: 24px;
 }
 
 .table-toolbar {
@@ -785,16 +793,11 @@ h3 {
   border-bottom: none;
   border-radius: 4px 4px 0 0;
   background: #fafafa;
-  margin-top: 8px;
 }
 .table-toolbar-label {
   color: #515a6e;
   font-size: 13px;
   white-space: nowrap;
-}
-
-.stats-table {
-  margin-top: 16px;
 }
 
 :deep(.ivu-table) {

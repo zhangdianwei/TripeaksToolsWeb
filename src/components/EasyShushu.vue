@@ -3,7 +3,7 @@ import { ref, reactive, computed, shallowRef, onMounted } from "vue";
 import {
   Button, Input, Select, Option, InputNumber, DatePicker,
   Alert, Form, FormItem, Card, Table, Page, Tag, Tooltip, Message,
-  Collapse, Panel, Divider,
+  Collapse, Panel, Divider, Tabs, TabPane,
   Dropdown, DropdownMenu, DropdownItem, Icon,
 } from "view-ui-plus";
 
@@ -231,19 +231,18 @@ const userOutputVar = reactive({
   allUserIds: [],
 });
 
-const userDefaultShownCols = ['ttid', '#account_id', '#distinct_id', '#user_id', 'platform'];
+const userDefaultShownCols = ['ttid', '#account_id', '#distinct_id', '#user_id', 'user_level'];
 const userShownColsText = ref(userDefaultShownCols.join(','));
 
 const userAllColNames = computed(() => Object.keys(userColMeta.value.allColConfigs));
 const userStatsColumns = [
-  { title: '统计结果', key: 'kind', width: 120 },
-  { title: '值', key: 'value', tooltip: true, ellipsis: true },
+  { title: 'name', key: 'label', width: 260 },
+  { title: 'value', key: 'values', tooltip: true, ellipsis: true },
 ];
-const userStatsRows = computed(() => [
-  { kind: 'user_id', value: userOutputVar.allUserIds.join(', ') },
-  { kind: 'account_id', value: userOutputVar.allAccountIds.join(', ') },
-  { kind: 'distinct_id', value: userOutputVar.allDistinctIds.join(', ') },
-]);
+const userStatsRows = computed(() => [{
+  label: '#user_id/#account_id/#distinct_id',
+  values: [...userOutputVar.allUserIds, ...userOutputVar.allAccountIds, ...userOutputVar.allDistinctIds].join(', '),
+}]);
 const userShownCols = computed({
   get: () => userShownColsText.value.split(',').map(s => s.trim()).filter(Boolean),
   set: (val) => { userShownColsText.value = val.join(','); },
@@ -568,55 +567,60 @@ onMounted(() => {
 <template>
   <Alert v-if="errorMsg" type="error" show-icon closable @on-close="errorMsg = ''">{{ errorMsg }}</Alert>
 
-  <Divider orientation="left">用户查询</Divider>
-  <Form inline :label-width="0">
-    <FormItem>
-      <Select v-model="userInputVar.projectName" style="width: 160px">
-        <Option v-for="name in projectNames" :key="name" :value="name">{{ name }}</Option>
-      </Select>
-    </FormItem>
-    <FormItem>
-      <Input v-model="userInputVar.userInput" style="width: 600px"
-        placeholder="任意account_id/distinct_id/user_id（逗号/空格分隔）例: sk1Y7TGZB, 772dd71ac9623749, 1242505651616231424">
-        <template #suffix>
-          <Tooltip placement="bottom-end" transfer>
-            <Icon type="ios-information-circle-outline" style="cursor: pointer;" />
+  <Tabs :animated="false">
+    <TabPane label="查用户" name="user">
+      <h3>输入</h3>
+      <Form inline :label-width="0">
+        <FormItem>
+          <Select v-model="userInputVar.projectName" style="width: 160px">
+            <Option v-for="name in projectNames" :key="name" :value="name">{{ name }}</Option>
+          </Select>
+        </FormItem>
+        <FormItem>
+          <Input v-model="userInputVar.userInput" style="width: 600px"
+            placeholder="任意account_id/distinct_id/user_id（逗号/空格分隔）例: sk1Y7TGZB, 772dd71ac9623749, 1242505651616231424">
+            <template #suffix>
+              <Tooltip placement="bottom-end" transfer>
+                <Icon type="ios-information-circle-outline" style="cursor: pointer;" />
+                <template #content>
+                  <div>account_id × {{ parsedUserInput.account_id.length }}：{{ parsedUserInput.account_id.join(', ') || '-' }}</div>
+                  <div>distinct_id × {{ parsedUserInput.distinct_id.length }}：{{ parsedUserInput.distinct_id.join(', ') || '-' }}</div>
+                  <div>user_id × {{ parsedUserInput.user_id.length }}：{{ parsedUserInput.user_id.join(', ') || '-' }}</div>
+                </template>
+              </Tooltip>
+            </template>
+          </Input>
+        </FormItem>
+        <FormItem>
+          <Tooltip placement="bottom" transfer :max-width="700">
+            <Button shape="circle" @click="copyToClipboard(userQuerySql)">sql</Button>
             <template #content>
-              <div>account_id × {{ parsedUserInput.account_id.length }}：{{ parsedUserInput.account_id.join(', ') || '-' }}</div>
-              <div>distinct_id × {{ parsedUserInput.distinct_id.length }}：{{ parsedUserInput.distinct_id.join(', ') || '-' }}</div>
-              <div>user_id × {{ parsedUserInput.user_id.length }}：{{ parsedUserInput.user_id.join(', ') || '-' }}</div>
+              <pre style="margin:0; white-space:pre-wrap; word-break:break-all;">{{ userQuerySql }}</pre>
             </template>
           </Tooltip>
-        </template>
-      </Input>
-    </FormItem>
-    <FormItem>
-      <Tooltip placement="bottom" transfer :max-width="700">
-        <Button shape="circle">sql</Button>
-        <template #content>
-          <div style="text-align:right; margin-bottom:4px;">
-            <Button size="small" @click="copyToClipboard(userQuerySql)">复制</Button>
-          </div>
-          <pre style="margin:0; white-space:pre-wrap; word-break:break-all;">{{ userQuerySql }}</pre>
-        </template>
-      </Tooltip>
-    </FormItem>
-    <FormItem>
-      <Button type="primary" :loading="userInputVar.isUserSearching" @click="onClickSearchUser">查询用户</Button>
-    </FormItem>
-  </Form>
-  <template v-if="userOutputVar.users.length">
-    <div class="table-toolbar">
-      <span class="table-toolbar-label">显示字段</span>
-      <Select v-model="userShownCols" multiple filterable placeholder="选择要显示的字段" style="flex:1;">
-        <Option v-for="name in userAllColNames" :key="name" :value="name">{{ name }}</Option>
-      </Select>
-    </div>
-    <Table :border="true" :columns="userShownColConfigs" :data="userOutputVar.users" size="small" />
-    <Table :border="true" :columns="userStatsColumns" :data="userStatsRows" size="small" class="stats-table" />
-  </template>
+        </FormItem>
+        <FormItem>
+          <Button type="primary" :loading="userInputVar.isUserSearching" @click="onClickSearchUser">查询用户</Button>
+        </FormItem>
+      </Form>
 
-  <h3>2. 事件查询</h3>
+      <template v-if="userOutputVar.users.length">
+        <h3>查询结果</h3>
+        <div class="table-toolbar">
+          <span class="table-toolbar-label">显示字段</span>
+          <Select v-model="userShownCols" multiple filterable placeholder="选择要显示的字段" style="flex:1;">
+            <Option v-for="name in userAllColNames" :key="name" :value="name">{{ name }}</Option>
+          </Select>
+        </div>
+        <Table :border="true" :columns="userShownColConfigs" :data="userOutputVar.users" size="small" />
+
+        <h3>统计信息</h3>
+        <Table :border="true" :columns="userStatsColumns" :data="userStatsRows" size="small" />
+      </template>
+    </TabPane>
+
+    <TabPane label="查事件" name="event">
+      <h3>2. 事件查询</h3>
   <Form inline :label-width="80">
     <FormItem label="开始(UTC)">
       <DatePicker v-model="eventInputVar.startTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
@@ -715,6 +719,8 @@ onMounted(() => {
     </FormItem>
   </Form>
   <Table :border="true" :columns="wantShowColConfigs" :data="eventDisplayedRows" size="small" />
+    </TabPane>
+  </Tabs>
 </template>
 
 <style scoped>

@@ -72,8 +72,7 @@ function sqlStr(s) { return `'${String(s).replace(/'/g, "''")}'`; }
 // ============ ID 启发式分类 ============
 function classifyId(id) {
   if (/^\d{15,}$/.test(id)) return 'user_id';
-  if (/^[a-f0-9]{16}$/.test(id)) return 'distinct_id';
-  if (/^[A-F0-9]{8}-[A-F0-9-]{27}$/i.test(id)) return 'distinct_id';
+  if (id.length >= 15 && /^[a-zA-Z0-9-]+$/.test(id)) return 'distinct_id';
   return 'account_id';
 }
 

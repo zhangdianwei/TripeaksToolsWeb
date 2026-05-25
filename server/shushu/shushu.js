@@ -40,7 +40,8 @@ router.post('/query', async (req, res) => {
     }
     res.send(text)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    console.error('[shushu]', err.stack)
+    res.status(500).json({ error: err.stack || err.message })
   }
 })
 

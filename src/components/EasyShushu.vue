@@ -24,7 +24,13 @@ async function fetchServer(sql) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sql }),
   });
-  return await response.text();
+  const text = await response.text();
+  if (!response.ok) {
+    let msg = text;
+    try { msg = JSON.parse(text).error || text; } catch {}
+    throw new Error(`后端 ${response.status}: ${msg}`);
+  }
+  return text;
 }
 
 // ============ 工具函数 ============
@@ -73,6 +79,9 @@ function parseShushuResponse(text) {
   const first = JSON.parse(lines[0]);
   if (first.return_code != null && first.return_code !== 0) {
     throw new Error(first.return_message || '查询失败');
+  }
+  if (!first.data || !first.data.headers) {
+    throw new Error(`返回格式异常: ${lines[0]}`);
   }
   const rawHeaders = first.data.headers;
   const rows = [];

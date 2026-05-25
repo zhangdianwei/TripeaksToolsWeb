@@ -29,6 +29,6 @@
 # 其他说明
 ## easy_shushu
 * 数数查询需要token，不能保存在代码仓库里。
-* token应该放在`public/easy_shushu/config.json`里面，但是现在里面是空的。
+* token应该放在`public/server/shushu/config.json`里面，但是现在里面是空的。
 * token的配置在打包机的`~/Desktop/script/easy_shushu_config.json`。
 * jenkins打包时会自动把这个文件拷贝到最终输出目录。

@@ -8,11 +8,14 @@ import {
 } from "view-ui-plus";
 
 // ============ 项目配置 ============
+const TP1_EVENT_TIME_UTC_EXPR = `concat(replace(CAST(date_add('hour', -(CAST(COALESCE("#zone_offset", 0) AS bigint)), "#event_time") AS VARCHAR), ' ', 'T'), 'Z')`;
+const TP4_EVENT_TIME_UTC_EXPR = `clienttime`;
+
 const projectConfigs = {
-  "Tripeaks1": { eventTableName: "ta.v_event_6", userTableName: "ta.v_user_6", hasAliasIdCols: true },
-  "Tripeaks1-Beta": { eventTableName: "ta.v_event_17", userTableName: "ta.v_user_17", hasAliasIdCols: true },
-  "Tripeaks4": { eventTableName: "ta.v_event_2", userTableName: "ta.v_user_2", hasAliasIdCols: false },
-  "Tripeaks4-Beta": { eventTableName: "ta.v_event_16", userTableName: "ta.v_user_16", hasAliasIdCols: false },
+  "Tripeaks1": { eventTableName: "ta.v_event_6", userTableName: "ta.v_user_6", hasAliasIdCols: true, eventTimeUtcExpr: TP1_EVENT_TIME_UTC_EXPR },
+  "Tripeaks1-Beta": { eventTableName: "ta.v_event_17", userTableName: "ta.v_user_17", hasAliasIdCols: true, eventTimeUtcExpr: TP1_EVENT_TIME_UTC_EXPR },
+  "Tripeaks4": { eventTableName: "ta.v_event_2", userTableName: "ta.v_user_2", hasAliasIdCols: false, eventTimeUtcExpr: TP4_EVENT_TIME_UTC_EXPR },
+  "Tripeaks4-Beta": { eventTableName: "ta.v_event_16", userTableName: "ta.v_user_16", hasAliasIdCols: false, eventTimeUtcExpr: TP4_EVENT_TIME_UTC_EXPR },
 };
 const projectNames = Object.keys(projectConfigs);
 
@@ -45,8 +48,8 @@ function deepFreeze(obj) {
 function pad2(n) { return String(n).padStart(2, '0'); }
 
 // DatePicker 显示什么时间就当 UTC 时间用：读取 local 分量当 UTC 分量
-function dateToUtcIso(d) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}Z`;
+function dateToUtcIso(d, ms = '000') {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${ms}Z`;
 }
 function dateToUtcDate(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -319,11 +322,11 @@ const eventQuerySql = computed(() => {
   if (!start || !end) return '-- 请选择起止时间';
   const partStart = dateToUtcDate(addDays(start, -1));
   const partEnd = dateToUtcDate(addDays(end, 1));
-  const startIso = dateToUtcIso(start);
-  const endIso = dateToUtcIso(end);
+  const startIso = dateToUtcIso(start, '000');
+  const endIso = dateToUtcIso(end, '999');
   return `SELECT * FROM (
   SELECT
-    concat(replace(CAST(date_add('hour', -(CAST(COALESCE("#zone_offset", 0) AS bigint)), "#event_time") AS VARCHAR), ' ', 'T'), 'Z') event_time_utc,
+    ${project.eventTimeUtcExpr} event_time_utc,
     *
   FROM ${project.eventTableName}
   WHERE "$part_date" BETWEEN '${partStart}' AND '${partEnd}'

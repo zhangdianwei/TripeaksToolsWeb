@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import http from 'http'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -16,6 +17,30 @@ const SHUSHU_TOKEN = (() => {
   }
 })()
 
+function postForm(urlStr, params) {
+  return new Promise((resolve, reject) => {
+    const body = new URLSearchParams(params).toString()
+    const u = new URL(urlStr)
+    const req = http.request({
+      hostname: u.hostname,
+      port: u.port,
+      path: u.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, (res) => {
+      let data = ''
+      res.on('data', c => data += c)
+      res.on('end', () => resolve({ status: res.statusCode, text: data }))
+    })
+    req.on('error', reject)
+    req.write(body)
+    req.end()
+  })
+}
+
 const router = Router()
 
 router.post('/query', async (req, res) => {
@@ -24,17 +49,11 @@ router.post('/query', async (req, res) => {
   if (!SHUSHU_TOKEN) return res.status(500).json({ error: 'token not configured' })
 
   try {
-    const form = new URLSearchParams()
-    form.append('token', SHUSHU_TOKEN)
-    form.append('sql', sql)
-    form.append('format', 'json')
-
-    const response = await fetch(SHUSHU_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form,
+    const { text } = await postForm(SHUSHU_URL, {
+      token: SHUSHU_TOKEN,
+      sql,
+      format: 'json',
     })
-    const text = await response.text()
     if (text.startsWith('<')) {
       return res.status(502).json({ error: '数数服务器错误或超时' })
     }

@@ -3,6 +3,7 @@ import cors from 'cors'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import { createProxyMiddleware } from 'http-proxy-middleware'
 import shushuRouter from './shushu/shushu.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -21,6 +22,8 @@ app.use('/api/shushu', shushuRouter)
 if (isProd) {
   app.use(express.static(DIST_PATH))
   app.get('*', (req, res) => res.sendFile(DIST_PATH + '/index.html'))
+} else {
+  app.use('*', createProxyMiddleware({ target: 'http://localhost:5173', changeOrigin: true }))
 }
 
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`))

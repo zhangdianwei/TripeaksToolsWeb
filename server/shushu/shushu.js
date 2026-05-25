@@ -34,7 +34,11 @@ router.post('/query', async (req, res) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form,
     })
-    res.send(await response.text())
+    const text = await response.text()
+    if (text.startsWith('<')) {
+      return res.status(502).json({ error: '数数服务器错误或超时' })
+    }
+    res.send(text)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

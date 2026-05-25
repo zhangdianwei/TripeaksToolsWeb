@@ -250,7 +250,7 @@ async function onClickSearchUser() {
       return;
     }
     const text = await fetchServer(sql);
-    if (!text) { errorMsg.value = '无返回'; return; }
+    if (!text) { errorMsg.value = 'server.js服务器出问题了'; return; }
     if (text.includes('查询似乎出现了一些问题')) { errorMsg.value = text; return; }
     const parsed = parseShushuResponse(text);
     deepFreeze(parsed.rows);
@@ -289,8 +289,14 @@ const eventQuerySql = computed(() => {
   if (!project) return '';
   const groups = parsedEventInput.value;
   const conds = [];
-  if (groups.account_id.length) conds.push(`"#account_id" IN (${groups.account_id.map(sqlStr).join(',')})`);
-  if (groups.distinct_id.length) conds.push(`"#distinct_id" IN (${groups.distinct_id.map(sqlStr).join(',')})`);
+  if (groups.account_id.length) {
+    const ids = groups.account_id.map(sqlStr).join(',');
+    conds.push(`("#account_id" IN (${ids}) OR "c_userid" IN (${ids}))`);
+  }
+  if (groups.distinct_id.length) {
+    const ids = groups.distinct_id.map(sqlStr).join(',');
+    conds.push(`("#distinct_id" IN (${ids}) OR "c_clientid" IN (${ids}))`);
+  }
   if (groups.user_id.length) conds.push(`"#user_id" IN (${groups.user_id.join(',')})`);
   if (!conds.length) return '-- 请输入至少一个 id';
   const start = eventInputVar.startTime;
@@ -398,7 +404,7 @@ async function onClickSearchEvent() {
       return;
     }
     const text = await fetchServer(sql);
-    if (!text) { errorMsg.value = '无返回'; return; }
+    if (!text) { errorMsg.value = 'server.js服务器出问题了'; return; }
     if (text.includes('查询似乎出现了一些问题')) { errorMsg.value = text; return; }
     const parsed = parseShushuResponse(text);
     deepFreeze(parsed.rows);

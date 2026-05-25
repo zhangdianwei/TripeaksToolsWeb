@@ -9,10 +9,10 @@ import {
 
 // ============ 项目配置 ============
 const projectConfigs = {
-  "Tripeaks1": { eventTableName: "ta.v_event_6", userTableName: "ta.v_user_6" },
-  "Tripeaks1-Beta": { eventTableName: "ta.v_event_17", userTableName: "ta.v_user_17" },
-  "Tripeaks4": { eventTableName: "ta.v_event_2", userTableName: "ta.v_user_2" },
-  "Tripeaks4-Beta": { eventTableName: "ta.v_event_16", userTableName: "ta.v_user_16" },
+  "Tripeaks1": { eventTableName: "ta.v_event_6", userTableName: "ta.v_user_6", hasAliasIdCols: true },
+  "Tripeaks1-Beta": { eventTableName: "ta.v_event_17", userTableName: "ta.v_user_17", hasAliasIdCols: true },
+  "Tripeaks4": { eventTableName: "ta.v_event_2", userTableName: "ta.v_user_2", hasAliasIdCols: false },
+  "Tripeaks4-Beta": { eventTableName: "ta.v_event_16", userTableName: "ta.v_user_16", hasAliasIdCols: false },
 };
 const projectNames = Object.keys(projectConfigs);
 
@@ -159,6 +159,12 @@ const userQuerySql = computed(() => {
   }
   if (!conds.length) return '-- 请输入至少一个 id';
   const userTable = project.userTableName;
+  if (!project.hasAliasIdCols) {
+    return `SELECT *
+FROM ${userTable}
+WHERE ${conds.join('\n   OR ')}
+LIMIT 100`;
+  }
   return `WITH base AS (
   SELECT "#account_id", "accountid", "userid", "#distinct_id", "distinctid"
   FROM ${userTable}
@@ -199,7 +205,7 @@ const userOutputVar = reactive({
   allUserIds: [],
 });
 
-const userDefaultShownCols = ['ttid', '#account_id', '#distinct_id', '#user_id', 'user_level', 'user_name'];
+const userDefaultShownCols = ['ttid', '#user_id', '#account_id', '#distinct_id', 'user_level', 'user_name'];
 const userShownColsText = ref(userDefaultShownCols.join(','));
 
 const userAllColNames = computed(() => Object.keys(userColMeta.value.allColConfigs));

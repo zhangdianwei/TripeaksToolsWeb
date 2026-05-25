@@ -529,13 +529,17 @@ function onClickQuickSearch(name) {
 function onPageChange(value) { eventFilterVar.curPage = value; }
 function onPageSizeChange(value) { eventFilterVar.pageSize = value; }
 
-async function copyToClipboard(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    Message.success('已复制');
-  } catch (err) {
-    Message.error(`复制失败: ${err.message}`);
-  }
+function copyToClipboard(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand('copy');
+  document.body.removeChild(ta);
+  if (ok) Message.success('已复制');
+  else Message.error('复制失败');
 }
 
 function downloadBlob(content, filename, mimeType) {

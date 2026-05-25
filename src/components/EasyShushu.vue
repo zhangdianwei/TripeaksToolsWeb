@@ -76,6 +76,12 @@ function parseUserInputText(text) {
 }
 
 // ============ 数数返回解析 ============
+// 把 JSON 数组里超过安全整数范围的裸整数（>=16 位数字）包成字符串，避免 JSON.parse 精度丢失
+function parseLineSafely(line) {
+  const safe = line.replace(/([\[,])\s*(\d{16,})\s*(?=[,\]])/g, '$1"$2"');
+  return JSON.parse(safe);
+}
+
 function parseShushuResponse(text) {
   const lines = text.trim().split(/\r?\n/);
   if (!lines.length) throw new Error('返回为空');
@@ -89,7 +95,7 @@ function parseShushuResponse(text) {
   const rawHeaders = first.data.headers;
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const arr = JSON.parse(lines[i]);
+    const arr = parseLineSafely(lines[i]);
     const obj = { ttid: i };
     for (let c = 0; c < rawHeaders.length; c++) {
       obj[rawHeaders[c]] = arr[c];

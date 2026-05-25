@@ -23,7 +23,12 @@ if (isProd) {
   app.use(express.static(DIST_PATH))
   app.get('*', (req, res) => res.sendFile(DIST_PATH + '/index.html'))
 } else {
-  app.use('*', createProxyMiddleware({ target: 'http://localhost:5173', changeOrigin: true }))
+  const viteProxy = createProxyMiddleware({
+    target: 'http://localhost:5173',
+    changeOrigin: true,
+    ws: true,
+  })
+  app.use(viteProxy)
 }
 
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`))

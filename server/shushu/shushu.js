@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const configPath = path.join(__dirname, 'config.json')
 
-const SHUSHU_URL = 'http://54.242.216.84:8992/querysql'
+const SHUSHU_URL = 'http://54.242.216.84:8992/querySql'
 const SHUSHU_TOKEN = (() => {
   try {
     return JSON.parse(fs.readFileSync(configPath, 'utf-8')).token

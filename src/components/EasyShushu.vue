@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, shallowRef, onMounted } from "vue";
+import { ref, reactive, computed, shallowRef } from "vue";
 import {
   Button, Input, Select, Option, InputNumber, DatePicker,
   Alert, Form, FormItem, Table, Page, Tooltip, Message,
@@ -15,31 +15,14 @@ const projectConfigs = {
   "Tripeaks4-Beta": { eventTableName: "ta.v_event_16", userTableName: "ta.v_user_16" },
 };
 const projectNames = Object.keys(projectConfigs);
-const thinkingdataUrl = 'http://10.10.31.17:8992/querysql';
-
-// ============ Token ============
-const taToken = ref(null);
-async function fetchToken() {
-  try {
-    const response = await fetch("easy_shushu/config.json");
-    const data = await response.json();
-    taToken.value = data.token;
-  } catch (err) {
-    errorMsg.value = `加载 token 失败: ${err.message}`;
-  }
-}
 
 // ============ HTTP ============
 const errorMsg = ref("");
 async function fetchServer(sql) {
-  const form = new URLSearchParams();
-  form.append("token", taToken.value || "");
-  form.append("sql", sql);
-  form.append("format", "json");
-  const response = await fetch(thinkingdataUrl, {
+  const response = await fetch('/api/shushu/query', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: form,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql }),
   });
   return await response.text();
 }
@@ -592,9 +575,6 @@ function onDownload(source, kind) {
   }
 }
 
-onMounted(() => {
-  fetchToken();
-});
 </script>
 
 <template>

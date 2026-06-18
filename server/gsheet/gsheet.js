@@ -2,8 +2,7 @@ import { Router } from 'express'
 import { google } from 'googleapis'
 import secrets from '../config.js'
 
-const SPREADSHEET_ID = '13xMhH852aM5ww_RzU2s_gdZanGfa0_UJL9DxnNicK-8'
-const GID = { TP1: 503904834, TP4: 513464294 }
+const SPREADSHEET_ID = '1Pymj_iLeIWo4nvpdefsBLzC8y1iA-FUEPK9oT0rEqjs'
 
 function isConfigured() {
   return !!(secrets.gsheet && secrets.gsheet.private_key)
@@ -20,11 +19,14 @@ function getSheets() {
   return sheetsClient
 }
 
-async function sheetTitleByGid(sheets, gid) {
+function sheetName(project, year) {
+  return `${year}发版记录-${project.toLowerCase()}`
+}
+
+async function assertSheetExists(sheets, title) {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
-  const s = (meta.data.sheets || []).find(x => x.properties.sheetId === gid)
-  if (!s) throw new Error(`未找到 gid=${gid} 对应的工作表`)
-  return s.properties.title
+  const exists = (meta.data.sheets || []).some(x => x.properties.title === title)
+  if (!exists) throw new Error(`未找到工作表「${title}」,请确认表格中已存在该 sheet`)
 }
 
 const router = Router()
@@ -35,12 +37,14 @@ router.post('/fill', async (req, res) => {
   }
   try {
     const { project, row, releaser } = req.body || {}
-    const gid = GID[project]
-    if (gid == null) return res.status(400).json({ error: `未知项目: ${project}` })
     if (!row) return res.status(400).json({ error: '缺少 row 数据' })
 
+    const year = String(row.date || '').split('.')[0]
+    if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: `无法从日期解析年份: ${row.date}` })
+    const title = sheetName(project, year)
+
     const sheets = getSheets()
-    const title = await sheetTitleByGid(sheets, gid)
+    await assertSheetExists(sheets, title)
     const values = [[row.date, row.platform, row.version, releaser, row.content, row.commit]]
 
     await sheets.spreadsheets.values.append({

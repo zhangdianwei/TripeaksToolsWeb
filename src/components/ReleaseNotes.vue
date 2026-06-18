@@ -16,8 +16,8 @@ const releaserMap = ref({});
 const RELEASERS = ["张殿伟", "赵谦", "王若冲", "王红", "焦红业"];
 
 const SHEET_URLS = {
-  TP1: "https://docs.google.com/spreadsheets/d/13xMhH852aM5ww_RzU2s_gdZanGfa0_UJL9DxnNicK-8/edit?gid=503904834#gid=503904834",
-  TP4: "https://docs.google.com/spreadsheets/d/13xMhH852aM5ww_RzU2s_gdZanGfa0_UJL9DxnNicK-8/edit?gid=513464294#gid=513464294",
+  TP1: "https://docs.google.com/spreadsheets/d/1Pymj_iLeIWo4nvpdefsBLzC8y1iA-FUEPK9oT0rEqjs/edit?gid=2016334865#gid=2016334865",
+  TP4: "https://docs.google.com/spreadsheets/d/1Pymj_iLeIWo4nvpdefsBLzC8y1iA-FUEPK9oT0rEqjs/edit?gid=98731370#gid=98731370",
 };
 
 const filling = ref({});

@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { Button, DatePicker, Alert, Tag, Table, Select, Option, Divider, Message } from "view-ui-plus";
 
 const loading = ref(false);
@@ -11,7 +11,14 @@ const queryDate = ref("");
 const groups = ref([]);
 const otaMap = ref({});
 const resourceCommit = ref("");
-const releaserMap = ref({});
+const RELEASER_KEY = "release_releaser_map";
+function loadReleaserMap() {
+  try { return JSON.parse(localStorage.getItem(RELEASER_KEY)) || {}; } catch { return {}; }
+}
+const releaserMap = ref(loadReleaserMap());
+watch(releaserMap, (v) => {
+  try { localStorage.setItem(RELEASER_KEY, JSON.stringify(v)); } catch {}
+}, { deep: true });
 
 const RELEASERS = ["张殿伟", "赵谦", "王若冲", "王红", "焦红业"];
 

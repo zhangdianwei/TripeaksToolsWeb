@@ -1,0 +1,17 @@
+{
+  "feishu": {
+    "mcp_token": "飞书项目 MCP token (m-xxxx)"
+  },
+  "shushu": {
+    "token": "数数 querySql token"
+  },
+  "gsheet": {
+    "type": "service_account",
+    "project_id": "...",
+    "private_key_id": "...",
+    "private_key": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",
+    "client_email": "xxx@xxx.iam.gserviceaccount.com",
+    "client_id": "...",
+    "token_uri": "https://oauth2.googleapis.com/token"
+  }
+}

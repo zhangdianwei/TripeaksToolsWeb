@@ -5,6 +5,9 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 import shushuRouter from './shushu/shushu.js'
+import feishuRouter from './feishu/feishu.js'
+import gitRouter from './git/git.js'
+import gsheetRouter from './gsheet/gsheet.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = 9090
@@ -18,6 +21,9 @@ app.use(express.json())
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }))
 app.use('/api/shushu', shushuRouter)
+app.use('/api/feishu', feishuRouter)
+app.use('/api/git', gitRouter)
+app.use('/api/gsheet', gsheetRouter)
 
 if (isProd) {
   app.use(express.static(DIST_PATH))

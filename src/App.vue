@@ -9,6 +9,7 @@ import EasyShushu from "./components/EasyShushu.vue";
 import DogRun from "./components/DogRun.vue";
 import BuriedBounty from "./components/BuriedBounty.vue";
 import PlayableAds from "./components/PlayableAds.vue";
+import ReleaseNotes from "./components/ReleaseNotes.vue";
 
 const PageConfigs = [
   // { name: "BingoTest", comp: BingoTest },
@@ -17,6 +18,7 @@ const PageConfigs = [
   { name: "小狗快跑地图编辑器", comp: DogRun },
   { name: "敲格子UI编辑器", comp: BuriedBounty },
   { name: "PlayableAds", comp: PlayableAds },
+  { name: "发版内容", comp: ReleaseNotes },
   { name: "数数（程序版）", comp: EasyShushu },
 ];
 

@@ -1,4 +1,10 @@
 {
+  "TripeaksToolsWebData": "/绝对路径/TripeaksToolsWebData (发版流程存档目录,必须在 server 目录之外)",
+  "TripeaksClient": "/abs/TripeaksClient (本地工作副本路径,发版流程用)",
+  "TripeaksResources": "/abs/TripeaksResources",
+  "TripeaksJourneyConfig": "/abs/TripeaksJourneyConfig",
+  "TripeaksAdventureConfig": "/abs/TripeaksAdventureConfig",
+  "TripeaksLevelConfig": "/abs/TripeaksLevelConfig",
   "feishu": {
     "mcp_token": "飞书项目 MCP token (m-xxxx)"
   },

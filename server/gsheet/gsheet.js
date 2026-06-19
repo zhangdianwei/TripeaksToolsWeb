@@ -29,32 +29,33 @@ async function assertSheetExists(sheets, title) {
   if (!exists) throw new Error(`未找到工作表「${title}」,请确认表格中已存在该 sheet`)
 }
 
+export async function fillRecord({ project, row, releaser, dryRun }) {
+  if (!isConfigured()) throw new Error('Google Sheets 凭证未配置(private_key.json 的 gsheet 段)')
+  if (!row) throw new Error('缺少 row 数据')
+  const year = String(row.date || '').split('.')[0]
+  if (!/^\d{4}$/.test(year)) throw new Error(`无法从日期解析年份: ${row.date}`)
+  const title = sheetName(project, year)
+  if (dryRun) return { ok: true, sheet: title, dryRun: true }
+
+  const sheets = getSheets()
+  await assertSheetExists(sheets, title)
+  const values = [[row.date, row.platform, row.version, releaser, row.content, row.commit]]
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `'${title}'`,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values },
+  })
+  return { ok: true, sheet: title }
+}
+
 const router = Router()
 
 router.post('/fill', async (req, res) => {
-  if (!isConfigured()) {
-    return res.status(500).json({ error: 'Google Sheets 凭证未配置(private_key.json 的 gsheet 段)' })
-  }
   try {
     const { project, row, releaser } = req.body || {}
-    if (!row) return res.status(400).json({ error: '缺少 row 数据' })
-
-    const year = String(row.date || '').split('.')[0]
-    if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: `无法从日期解析年份: ${row.date}` })
-    const title = sheetName(project, year)
-
-    const sheets = getSheets()
-    await assertSheetExists(sheets, title)
-    const values = [[row.date, row.platform, row.version, releaser, row.content, row.commit]]
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `'${title}'`,
-      valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values },
-    })
-    res.json({ ok: true, sheet: title })
+    res.json(await fillRecord({ project, row, releaser }))
   } catch (err) {
     console.error('[gsheet]', err.stack || err)
     res.status(500).json({ error: err.message || String(err) })

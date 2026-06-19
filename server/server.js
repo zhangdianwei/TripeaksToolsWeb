@@ -8,6 +8,7 @@ import shushuRouter from './shushu/shushu.js'
 import feishuRouter from './feishu/feishu.js'
 import gitRouter from './git/git.js'
 import gsheetRouter from './gsheet/gsheet.js'
+import releaseRouter from './release/release.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = 9090
@@ -24,6 +25,7 @@ app.use('/api/shushu', shushuRouter)
 app.use('/api/feishu', feishuRouter)
 app.use('/api/git', gitRouter)
 app.use('/api/gsheet', gsheetRouter)
+app.use('/api/release', releaseRouter)
 
 if (isProd) {
   app.use(express.static(DIST_PATH))

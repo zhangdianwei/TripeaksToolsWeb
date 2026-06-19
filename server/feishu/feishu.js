@@ -106,43 +106,45 @@ function projectFromName(name) {
   return m ? m[1] : null
 }
 
+export async function getRelease(dateStr) {
+  if (!isConfigured()) throw new Error('feishu 未配置(private_key.json feishu.mcp_token)')
+  const base = dateStr ? new Date(dateStr) : new Date()
+  if (isNaN(base.getTime())) throw new Error('date 格式错误')
+  const { monday, sunday } = weekRange(base)
+
+  const versions = await mql(
+    `SELECT \`work_item_id\`, \`name\`, \`work_item_status\`, \`schedule_publish_date\` ` +
+    `FROM \`${PROJECT_KEY}\`.\`${VERSION_TYPE}\` ` +
+    `WHERE \`schedule_publish_date\` between '${fmtDate(monday)}' and '${fmtDate(sunday)}'`,
+  )
+
+  const groups = []
+  for (const v of versions) {
+    const project = projectFromName(v.name)
+    if (project !== 'TP1' && project !== 'TP4') continue
+
+    const stories = await mql(
+      `SELECT \`name\`, \`field_e26910\` ` +
+      `FROM \`${PROJECT_KEY}\`.\`${STORY_TYPE}\` ` +
+      `WHERE any_relation_match(\`${STORY_PLANNING_VERSION_FIELD}\`, x -> x.\`work_item_id\` = ${v.work_item_id})`,
+    )
+
+    groups.push({
+      project,
+      versionName: v.name,
+      needPackage: stories.some(s => String(s.field_e26910).includes('需要发包')),
+      stories: stories.map(s => s.name),
+    })
+  }
+  groups.sort((a, b) => a.project.localeCompare(b.project))
+  return { weekStart: fmtDate(monday), weekEnd: fmtDate(sunday), groups }
+}
+
 const router = Router()
 
 router.get('/release', async (req, res) => {
-  if (!isConfigured()) return res.status(500).json({ error: 'feishu 未配置(server/feishu/config.json)' })
-
   try {
-    const base = req.query.date ? new Date(req.query.date) : new Date()
-    if (isNaN(base.getTime())) return res.status(400).json({ error: 'date 格式错误' })
-    const { monday, sunday } = weekRange(base)
-
-    const versions = await mql(
-      `SELECT \`work_item_id\`, \`name\`, \`work_item_status\`, \`schedule_publish_date\` ` +
-      `FROM \`${PROJECT_KEY}\`.\`${VERSION_TYPE}\` ` +
-      `WHERE \`schedule_publish_date\` between '${fmtDate(monday)}' and '${fmtDate(sunday)}'`,
-    )
-
-    const groups = []
-    for (const v of versions) {
-      const project = projectFromName(v.name)
-      if (project !== 'TP1' && project !== 'TP4') continue
-
-      const stories = await mql(
-        `SELECT \`name\`, \`field_e26910\` ` +
-        `FROM \`${PROJECT_KEY}\`.\`${STORY_TYPE}\` ` +
-        `WHERE any_relation_match(\`${STORY_PLANNING_VERSION_FIELD}\`, x -> x.\`work_item_id\` = ${v.work_item_id})`,
-      )
-
-      groups.push({
-        project,
-        versionName: v.name,
-        needPackage: stories.some(s => String(s.field_e26910).includes('需要发包')),
-        stories: stories.map(s => s.name),
-      })
-    }
-    groups.sort((a, b) => a.project.localeCompare(b.project))
-
-    res.json({ weekStart: fmtDate(monday), weekEnd: fmtDate(sunday), groups })
+    res.json(await getRelease(req.query.date))
   } catch (err) {
     console.error('[feishu]', err.stack)
     res.status(500).json({ error: err.message || String(err) })

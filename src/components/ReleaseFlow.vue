@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
-import { Button, Select, Option, Table, Card, Alert, Tag, Input, Divider, Message, Modal, Spin, Tooltip, Icon } from "view-ui-plus";
+import { Button, Select, Option, Table, Card, Alert, Tag, Input, Divider, Message, Modal, Spin, Tooltip, Icon, Checkbox } from "view-ui-plus";
 
 const RELEASERS = ["张殿伟", "赵谦", "王若冲", "王红", "焦红业"];
 const PROJECTS = ["TP1", "TP4"];
@@ -30,15 +30,12 @@ const GEN = {
   hfCS: f => `${f.project} 本次问题已由新 ota 修复;玩家更新到新 ota 即可正常游戏`,
 };
 
-// 大流程定义(小流程在 resources 内部,由后端返回)
+// 大流程定义(autosubs 类型的小流程由 SUB_PLANS 定义、后端逐个执行)
 const FLOWS = {
   regular: [
-    { key: "prepare", title: "正式环境", kind: "prepare" },
-    { key: "push", title: "推送线上", kind: "external", link: JENKINS_PIPELINE, desc: "推送 ota 到线上。" },
-    { key: "merge", title: "合并 prod", kind: "merge", direction: "beta2prod", tag: true },
-    { key: "record", title: "发版记录", kind: "record" },
-    { key: "notify_done", title: "通知完毕", kind: "external", gen: "done" },
-    { key: "package", title: "本地打包", kind: "external", pkg: true, desc: "可选:按时打包方便 QA 测试老活动。" },
+    { key: "prepare", title: "发版前流程", kind: "autosubs", plan: "prepare", endpoint: "prepare", runLabel: "启动:拉取并检查" },
+    { key: "push", title: "推送线上", kind: "external", link: JENKINS_PIPELINE, desc: "推送 ota 到线上。", notifyPushed: true },
+    { key: "post", title: "发版后流程", kind: "autosubs", plan: "post", endpoint: "post", manual: true },
     { key: "shushu", title: "数数报错", kind: "shushu" },
   ],
   hotfix_ota: [
@@ -78,8 +75,9 @@ const busy = reactive({});
 const ready = ref(false);
 const sel = ref("");
 const shushuMinutes = ref(30);
+const notifyPushed = ref(true); // 推送线上完成时是否通知群
 const nowMs = ref(Date.now());
-let poll = null, tick = null, autoQuerying = false;
+let tick = null, autoQuerying = false;
 
 const majors = computed(() => FLOWS[flow.value?.flowType] || FLOWS.regular);
 const selMajor = computed(() => majors.value.find(m => m.key === sel.value) || majors.value[0]);
@@ -88,47 +86,84 @@ const selIndex = computed(() => majors.value.findIndex(m => m.key === selMajor.v
 function st(key) { return flow.value?.steps?.[key] || {}; }
 function majorStatus(key) { return st(key).status || "pending"; }
 
-// 「正式环境」步的子流程(始终显示,逐个执行,执行一个显示一个结果)
+// autosubs 子流程定义(始终显示,逐个执行,执行一个显示一个结果)
 const DEFAULT_REPOS = [{ name: "TripeaksClient" }, { name: "TripeaksResources" }, { name: "TripeaksJourneyConfig" }, { name: "TripeaksLevelConfig" }];
 const runningSub = ref("");
 const subStartMs = ref(0);
+const subSkip = reactive({}); // 可选子流程的跳过集合(默认不跳过=勾选)
 function fmtDur(ms) {
   if (ms == null) return "";
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s`;
 }
-const subPlan = computed(() => {
-  const repos = cfg.value.repos?.length ? cfg.value.repos : DEFAULT_REPOS;
-  const list = [{ id: "feishu", name: "拉取飞书发版内容", title: "拉取飞书发版内容", cmd: "飞书 MQL:查询本周该项目 version 及其 stories" }];
-  repos.forEach(r => list.push({
-    id: "repo:" + r.name, name: r.name, title: `${r.name} 拉取最新提交`,
-    cmd: `cd ${r.name}\ngit checkout -f ${r.branch || "?"}\ngit clean -df\ngit pull --rebase origin ${r.branch || "?"}\ngit submodule update --init --recursive --force\ngit log -1`,
-  }));
-  list.push({ id: "check:res", name: "检查资源", title: "检查资源", cmd: "cd TripeaksClient\n./compile.coffee res --all\ngit status  # 编译后是否有改动" });
-  list.push({ id: "check:table", name: "检查配置表", title: "检查配置表", cmd: "cd TripeaksClient\n./compile.coffee table\ngit status  # 编译后是否有改动" });
-  list.push({ id: "check:level", name: "检查关卡", title: "检查关卡", cmd: "cd TripeaksClient\n./compile.coffee level\ngit status  # 编译后是否有改动" });
-  list.push({ id: "ota", name: "打ota并发消息", title: "打ota并发消息", cmd: "外部操作:打 ota 并发消息(当前仅标记完成,暂不实际执行)" });
-  return list;
-});
-function subOf(name) { return (st("prepare").subs || []).find(x => x.name === name); }
-const prepareCols = [
+const SUB_PLANS = {
+  prepare: (c) => {
+    const repos = c.repos?.length ? c.repos : DEFAULT_REPOS;
+    const list = [{ id: "feishu", name: "拉取飞书发版内容", title: "拉取飞书发版内容", cmd: "查询飞书本周发版内容\nversion / 需求列表 / 是否发包" }];
+    repos.forEach(r => {
+      const b = r.branch || "?";
+      list.push({
+        id: "repo:" + r.name, name: r.name, title: `${r.name} 拉取最新提交`,
+        cmd: `git fetch origin ${b}\ngit checkout -f ${b}\ngit reset --hard origin/${b}\ngit clean -df\ngit submodule update --init --recursive --force`,
+      });
+    });
+    list.push({ id: "check:res", name: "检查资源", title: "检查资源", cmd: "./compile.coffee res --all\ngit status" });
+    list.push({ id: "check:table", name: "检查配置表", title: "检查配置表", cmd: "./compile.coffee table\ngit status" });
+    list.push({ id: "check:level", name: "检查关卡", title: "检查关卡", cmd: "./compile.coffee level\ngit status" });
+    list.push({ id: "ota", name: "打ota并发消息", title: "打ota并发消息", optional: true, cmd: "外部打 ota 并发消息\n当前仅标记完成,不实际执行" });
+    return list;
+  },
+  post: (c) => {
+    const mg = c.merge || {};
+    const f = mg.from || "beta", t = mg.to || "prod";
+    return [
+      { id: "merge", name: "beta合并到prod", title: "beta合并到prod", cmd: `git fetch origin ${f}\ngit reset --hard origin/${f}\ngit checkout -f ${t}\ngit merge origin/${f}\ngit tag <项目>/<ota版本>\ngit push origin ${t}\ngit push origin <tag>\n已合并则跳过 merge` },
+      { id: "record", name: "填写发版记录", title: "填写发版记录", cmd: "查发版记录表是否已有该版本\n没有则写入一行" },
+      { id: "notify", name: "通知完毕", title: "通知完毕", cmd: "占位\n后续接飞书机器人发群消息" },
+    ];
+  },
+};
+const curSubs = computed(() => selMajor.value?.plan ? (SUB_PLANS[selMajor.value.plan]?.(cfg.value) || []) : []);
+function subOf(stepKey, name) { return (st(stepKey).subs || []).find(x => x.name === name); }
+const subCols = computed(() => [
   { title: "子流程", slot: "sub", width: 300 },
-  { title: "用时", slot: "dur", width: 90 },
+  selMajor.value?.manual ? { title: "操作", slot: "op", width: 170 } : { title: "用时", slot: "dur", width: 90 },
   { title: "结果", slot: "result" },
-];
-const prepareRows = computed(() => subPlan.value.map(s => {
-  const r = subOf(s.name);
-  const running = runningSub.value === s.id;
-  const ms = running ? (nowMs.value - subStartMs.value) : (r?.ms ?? null);
+]);
+const subRows = computed(() => {
+  let prevDone = true; // 手动模式按顺序解锁:前一步完成才允许执行后一步
+  return curSubs.value.map(s => {
+    const r = subOf(selMajor.value.key, s.name);
+    const running = runningSub.value === s.id;
+    const ms = running ? (nowMs.value - subStartMs.value) : (r?.ms ?? null);
+    const skipped = s.optional && subSkip[s.id];
+    const status = running ? "running" : (r ? (r.ok ? "done" : "failed") : (skipped ? "skipped" : "pending"));
+    const canRun = prevDone;
+    prevDone = prevDone && (status === "done" || skipped);
+    return {
+      id: s.id, name: s.name, title: s.title, cmd: s.cmd, running, optional: !!s.optional, status, canRun,
+      dur: fmtDur(ms),
+      result: r ? (r.ok ? (r.result || "完成") : (r.error || "失败")) : (skipped ? "未选,将跳过" : ""),
+      detail: r && !r.ok ? (r.detail || "") : "",
+      fail: r ? !r.ok : false,
+    };
+  });
+});
+// 发版记录表的标签页名:年份发版记录-项目(如 2026发版记录-tp1)
+const recordSheet = computed(() => flow.value ? `${todayDot().split(".")[0]}发版记录-${flow.value.project.toLowerCase()}` : "");
+// 发版记录预览(版本号来自「beta合并到prod」解析出的 otaVersion)
+const recordPreview = computed(() => {
+  const c = flow.value?.context || {};
   return {
-    id: s.id, title: s.title, cmd: s.cmd, running,
-    dur: fmtDur(ms),
-    result: r ? (r.ok ? (r.result || "完成") : (r.error || "失败")) : "",
-    detail: r && !r.ok ? (r.detail || "") : "",
-    fail: r ? !r.ok : false,
+    日期: todayDot(),
+    平台: c.needPackage ? "ota/ios/android" : "ota",
+    版本号: c.otaVersion ? `${flow.value.project.toLowerCase()}/${c.otaVersion}` : "待解析(合并步骤确定)",
+    发版人: operator.value,
+    发版内容: (c.stories || []).map((n, i) => `${i + 1}. ${n}`).join("\n") || "(发版前未拉到)",
+    "Resource commit": c.resourceCommit || "(发版前未拉到)",
   };
-}));
+});
 
 const recordCols = [
   { title: "日期", key: "date", width: 100 },
@@ -136,6 +171,10 @@ const recordCols = [
   { title: "版本号", key: "version", width: 120 },
   { title: "发版内容", slot: "content", minWidth: 240 },
   { title: "Resource commit", key: "commit", minWidth: 160 },
+];
+const shushuCols = [
+  { title: "错误信息(msg)", key: "msg", minWidth: 240, tooltip: true },
+  { title: "次数", key: "count", width: 80 },
 ];
 
 function pad2(n) { return String(n).padStart(2, "0"); }
@@ -170,7 +209,7 @@ function recordRow(f) {
   const c = f.context || {};
   return {
     date: todayDot(),
-    platform: "ota",
+    platform: c.needPackage ? "ota/ios/android" : "ota",
     version: c.otaVersion ? `${f.project.toLowerCase()}/${c.otaVersion}` : "",
     content: (c.stories || []).map((n, i) => `${i + 1}. ${n}`).join("\n"),
     commit: c.resourceCommit || "",
@@ -182,7 +221,7 @@ async function loadActive() {
   await run("load", async () => {
     const list = (await getJson("/api/release/flows?status=active")).flows || [];
     if (list.length) await enterFlow(list[0].id);
-    else { stopPoll(); flow.value = null; }
+    else flow.value = null;
   });
 }
 async function createFlow() {
@@ -199,23 +238,14 @@ async function enterFlow(id) {
   initTexts(f);
   const ms = (FLOWS[f.flowType] || []).find(m => (f.steps[m.key]?.status || "pending") !== "done");
   sel.value = (ms || (FLOWS[f.flowType] || [])[0])?.key || "";
-  startPoll();
 }
-function startPoll() {
-  stopPoll();
-  poll = setInterval(async () => {
-    if (!flow.value) return;
-    try { flow.value = await getJson(`/api/release/flows/${flow.value.id}`); } catch {}
-  }, 3000);
-}
-function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
 
 onMounted(async () => {
   await loadActive();
   ready.value = true;
   tick = setInterval(() => { nowMs.value = Date.now(); maybeAutoQuery(); }, 1000);
 });
-onUnmounted(() => { stopPoll(); if (tick) clearInterval(tick); });
+onUnmounted(() => { if (tick) clearInterval(tick); });
 
 // ============ 大流程操作(后端 mock) ============
 function setFlow(f) { flow.value = f; }
@@ -232,17 +262,41 @@ async function runOp(m, fn) {
   await run("op", async () => { await fn(); if (majorStatus(m.key) === "done") await afterDone(m.key); });
 }
 
-async function doPrepare(m) {
+// 发版前(自动):依次跑子流程,失败即整步 failed,重试重跑全部。
+async function doAutoSubs(m) {
   await run("op", async () => {
+    const plan = SUB_PLANS[m.plan]?.(cfg.value) || [];
     let ok = true;
-    for (const s of subPlan.value) {
+    for (const s of plan) {
+      if (s.optional && subSkip[s.id]) continue;
       runningSub.value = s.id; subStartMs.value = Date.now(); nowMs.value = Date.now();
-      try { setFlow(await postJson(`/api/release/flows/${flow.value.id}/prepare/sub`, { stepKey: m.key, sub: s.id, operator: operator.value })); }
+      try { setFlow(await postJson(`/api/release/flows/${flow.value.id}/${m.endpoint}/sub`, { stepKey: m.key, sub: s.id, operator: operator.value })); }
       finally { runningSub.value = ""; }
-      if (!subOf(s.name)?.ok) { ok = false; break; }
+      if (!subOf(m.key, s.name)?.ok) { ok = false; break; }
     }
     setFlow(await postJson(`/api/release/flows/${flow.value.id}/step`, { stepKey: m.key, status: ok ? "done" : "failed", operator: operator.value }));
     if (ok) await afterDone(m.key);
+  });
+}
+// 发版后(手动):每个子流程单独执行,按顺序解锁;全部完成才置完成。
+async function finishIfAllDone(m) {
+  const plan = SUB_PLANS[m.plan]?.(cfg.value) || [];
+  if (!plan.every(s => subOf(m.key, s.name)?.ok)) return;
+  setFlow(await postJson(`/api/release/flows/${flow.value.id}/step`, { stepKey: m.key, status: "done", operator: operator.value }));
+  await afterDone(m.key);
+}
+async function runOneSub(m, row) {
+  await run("op", async () => {
+    runningSub.value = row.id; subStartMs.value = Date.now(); nowMs.value = Date.now();
+    try { setFlow(await postJson(`/api/release/flows/${flow.value.id}/${m.endpoint}/sub`, { stepKey: m.key, sub: row.id, operator: operator.value })); }
+    finally { runningSub.value = ""; }
+    await finishIfAllDone(m);
+  });
+}
+async function markSubDone(m, row) {
+  await run("mark", async () => {
+    setFlow(await postJson(`/api/release/flows/${flow.value.id}/sub/mark`, { stepKey: m.key, name: row.name, operator: operator.value }));
+    await finishIfAllDone(m);
   });
 }
 async function doRecord(m) { await runOp(m, () => op("record", { stepKey: m.key, row: recordRow(flow.value) })); }
@@ -255,6 +309,10 @@ async function doMerge(m) {
 }
 async function completeExternal(m) {
   await run("op_" + m.key, async () => {
+    if (m.notifyPushed && notifyPushed.value) {
+      try { const r = await postJson(`/api/release/flows/${flow.value.id}/notify-pushed`, { operator: operator.value }); Message.success(`已通知群:${r.text}`); }
+      catch (e) { Message.warning(`通知失败(不影响完成):${e.message || e}`); }
+    }
     setFlow(await postJson(`/api/release/flows/${flow.value.id}/step`, { stepKey: m.key, status: "done", data: m.gen ? { notifyText: texts[m.key] } : undefined, operator: operator.value }));
     await afterDone(m.key);
   });
@@ -285,6 +343,7 @@ function maybeAutoQuery() {
 </script>
 
 <template>
+  <div class="release-root">
   <Alert v-if="errorMsg" type="error" show-icon closable @on-close="errorMsg = ''">{{ errorMsg }}</Alert>
 
   <div v-if="!ready" class="loading"><Spin size="large" /></div>
@@ -320,7 +379,7 @@ function maybeAutoQuery() {
       <Button type="error" ghost :loading="busy.close" @click="closeFlow(flow.id)">关闭流程</Button>
     </div>
 
-    <Alert type="info" show-icon banner>「正式环境」步骤真实执行(拉飞书内容 + 拉取各仓库);其余步骤暂为模拟数据。</Alert>
+    <Alert type="info" show-icon banner>发版前 / 发版后(合并、发版记录)真实执行:合并会 push 到 prod 并打 tag,发版记录真实写表,数数真实查询 jserror_new;通知为占位。</Alert>
 
     <div class="wizard">
       <!-- 左侧 step 条 -->
@@ -336,19 +395,32 @@ function maybeAutoQuery() {
       <!-- 右侧详情(不显示主流程标题) -->
       <div class="detail" v-if="selMajor">
         <Card dis-hover>
-          <!-- 1 正式环境(拉取飞书内容 + 拉取各仓库最新提交,子流程表格) -->
-          <template v-if="selMajor.kind === 'prepare'">
-            <Table :columns="prepareCols" :data="prepareRows" border size="small" style="margin-bottom:10px">
+          <!-- 自动子流程表(发版前 / 发版后):逐个执行,执行一个显示一个结果 -->
+          <template v-if="selMajor.kind === 'autosubs'">
+            <Table :columns="subCols" :data="subRows" border size="small" style="margin-bottom:10px">
               <template #sub="{ row }">
-                <span>{{ row.title }}</span>
+                <Checkbox v-if="row.optional" :model-value="!subSkip[row.id]" :disabled="busy.op || majorStatus(selMajor.key) === 'done'" @on-change="v => subSkip[row.id] = !v">{{ row.title }}</Checkbox>
+                <span v-else>{{ row.title }}</span>
                 <Tooltip placement="right" transfer max-width="440" class="cmd-tip">
                   <Icon type="ios-information-circle-outline" />
                   <template #content><pre class="cmd-pre">{{ row.cmd }}</pre></template>
                 </Tooltip>
               </template>
               <template #dur="{ row }"><span class="muted">{{ row.dur }}</span></template>
+              <template #op="{ row }">
+                <span v-if="row.status === 'done'" class="muted">已完成</span>
+                <span v-else-if="row.status === 'running'" class="muted">执行中…</span>
+                <template v-else>
+                  <Button size="small" type="primary" :disabled="!row.canRun" :loading="busy.op" @click="runOneSub(selMajor, row)">执行</Button>
+                  <Button v-if="row.status === 'failed'" size="small" style="margin-left:6px" :loading="busy.mark" @click="markSubDone(selMajor, row)">已人工解决</Button>
+                </template>
+              </template>
               <template #result="{ row }">
                 <span v-if="row.running" class="muted">执行中…</span>
+                <div v-else-if="row.id === 'record' && row.status === 'pending'" class="rec-preview">
+                  <div class="muted">将填写到:<a :href="SHEET_URLS[flow.project]" target="_blank">{{ recordSheet }}</a></div>
+                  <div class="kv" v-for="(v, k) in recordPreview" :key="k"><span class="kv-k">{{ k }}</span><span class="kv-v">{{ v }}</span></div>
+                </div>
                 <template v-else>
                   <span class="result-text" :class="{ err: row.fail }">{{ row.result }}</span>
                   <Tooltip v-if="row.detail" placement="left" transfer max-width="480" class="cmd-tip">
@@ -358,9 +430,13 @@ function maybeAutoQuery() {
                 </template>
               </template>
             </Table>
-            <Button v-if="majorStatus(selMajor.key) !== 'done'" type="primary" :loading="busy.op" @click="doPrepare(selMajor)">
-              {{ majorStatus(selMajor.key) === 'failed' ? '重试' : '启动:拉取并检查' }}
-            </Button>
+            <template v-if="!selMajor.manual">
+              <Button v-if="majorStatus(selMajor.key) !== 'done'" type="primary" :loading="busy.op" @click="doAutoSubs(selMajor)">
+                {{ majorStatus(selMajor.key) === 'failed' ? '重试' : (selMajor.runLabel || '启动') }}
+              </Button>
+              <Tag v-else color="success">已完成</Tag>
+            </template>
+            <Tag v-else-if="majorStatus(selMajor.key) === 'done'" color="success">已完成</Tag>
           </template>
 
           <!-- 外部操作:打ota / 推送 / 通知 / 打包 / 改代码 -->
@@ -374,6 +450,7 @@ function maybeAutoQuery() {
               <Button size="small" @click="texts[selMajor.key] = GEN[selMajor.gen](flow)">重置文案</Button>
               <Divider style="margin:10px 0" />
             </template>
+            <Checkbox v-if="selMajor.notifyPushed && majorStatus(selMajor.key) !== 'done'" v-model="notifyPushed" style="display:block;margin:8px 0">通知已推送(向群发"线上版本已发")</Checkbox>
             <Button v-if="majorStatus(selMajor.key) !== 'done'" type="success" :loading="busy['op_' + selMajor.key]" @click="completeExternal(selMajor)">完成</Button>
             <Tag v-else color="success">已完成</Tag>
           </template>
@@ -403,9 +480,9 @@ function maybeAutoQuery() {
             <span v-else class="muted">已写入:{{ st(selMajor.key).sheet }} <Tag v-if="st(selMajor.key).mock" color="warning">模拟</Tag></span>
           </template>
 
-          <!-- 9 数数倒计时 -->
+          <!-- 9 数数报错 -->
           <template v-else-if="selMajor.kind === 'shushu'">
-            <div class="muted">倒计时结束后自动从数数查询最新版本近 2 天的报错信息(server 执行)。</div>
+            <div class="muted">倒计时结束后(即使页面关闭)由服务器自动查询本次发布版本的 jserror_new,按 msg 分组。</div>
             <template v-if="majorStatus(selMajor.key) === 'pending'">
               <div class="frow" style="max-width:280px;margin-top:8px">
                 <label>倒计时</label>
@@ -417,22 +494,29 @@ function maybeAutoQuery() {
               <div class="countdown">{{ fmtRemain(remainMs(st(selMajor.key))) }}</div>
               <Button :loading="busy.op" @click="shushuQuery(selMajor)">立即查询</Button>
             </template>
+            <template v-else-if="majorStatus(selMajor.key) === 'failed'">
+              <div class="err">数数查询失败:{{ st(selMajor.key).error }}</div>
+              <Button style="margin-top:8px" :loading="busy.op" @click="shushuQuery(selMajor)">重试</Button>
+            </template>
             <template v-else>
-              <div class="result">
-                查询完成:版本 {{ st(selMajor.key).result?.version }} · 近 {{ st(selMajor.key).result?.days }} 天
-                <Tag :color="(st(selMajor.key).result?.total || 0) ? 'error' : 'success'">
-                  {{ (st(selMajor.key).result?.total || 0) ? `${st(selMajor.key).result.total} 条报错` : '无报错' }}
-                </Tag>
+              <div class="muted">近 {{ st(selMajor.key).result?.days }} 天 jserror_new · 版本 {{ st(selMajor.key).result?.version || '—' }} · 查询于 {{ fmtTime(st(selMajor.key).result?.queriedAt) }}
+                <Button size="small" style="margin-left:8px" :loading="busy.op" @click="shushuQuery(selMajor)">重新查询</Button>
               </div>
+              <div style="margin-top:10px">
+                <Tag :color="(st(selMajor.key).result?.total || 0) ? 'error' : 'success'">{{ (st(selMajor.key).result?.total || 0) ? `${st(selMajor.key).result.total} 条报错` : '无报错' }}</Tag>
+              </div>
+              <Table v-if="st(selMajor.key).result?.groups?.length" :columns="shushuCols" :data="st(selMajor.key).result.groups" border size="small" style="margin:6px 0" />
             </template>
           </template>
         </Card>
       </div>
     </div>
   </template>
+  </div>
 </template>
 
 <style scoped>
+.release-root { font-size: 15px; }
 .loading { text-align: center; padding: 64px 0; }
 .landing { max-width: 520px; margin: 32px auto 0; }
 .land-title { margin: 0 0 16px; text-align: center; }
@@ -446,7 +530,7 @@ function maybeAutoQuery() {
 .rail-li:last-child { border-bottom: none; }
 .rail-li:hover { background: #f7f9fc; }
 .rail-li.active { background: #e8f4ff; }
-.rail-title { font-size: 13px; }
+.rail-title { font-size: 14px; }
 .badge { width: 22px; height: 22px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; background: #c5c8ce; }
 .badge.done { background: #19be6b; }
 .badge.running { background: #2d8cf0; }
@@ -455,6 +539,10 @@ function maybeAutoQuery() {
 .cmd-tip { margin-left: 6px; color: #808695; cursor: help; }
 .cmd-pre { margin: 0; white-space: pre-wrap; word-break: break-all; font-size: 12px; line-height: 1.5; }
 .result-text { white-space: pre-wrap; word-break: break-all; }
+.rec-preview { font-size: 13px; }
+.kv { display: flex; gap: 10px; padding: 2px 0; }
+.kv-k { width: 96px; flex: none; color: #808695; }
+.kv-v { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-all; }
 .err { color: #ed4014; }
 .result { margin-top: 8px; }
 .multiline { white-space: pre-line; padding: 4px 0; }

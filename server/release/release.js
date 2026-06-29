@@ -3,13 +3,29 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import secrets from '../config.js'
 import * as store from '../store/store.js'
-import { getRelease } from '../feishu/feishu.js'
+import { getRelease, sendBotMessage } from '../feishu/feishu.js'
+import { querySql } from '../shushu/shushu.js'
+import { fillRecord, findRecord } from '../gsheet/gsheet.js'
 
-// 说明:「正式环境」(prepare)真实执行飞书拉取 + 各仓库拉取;其余步骤(合并/记录/数数)仍为模拟数据。
+// 说明:发版前(prepare)、发版后(post:合并/记录)真实执行;通知为占位,数数仍为模拟。
 const exec = promisify(execFile)
 // compile.coffee 的 shebang 是相对路径,macOS 链式解析不可靠,显式用 coffee 解释器执行。
 const COFFEE = './node_modules/coffee-script/bin/coffee'
 const git = (cwd, args) => exec('git', ['-C', cwd, ...args], { maxBuffer: 64 * 1024 * 1024 }).then(r => r.stdout.trim())
+const OTA_GREP = 'Update[ _]ota[ _]files[ _]to[ _]version[ _][0-9]+[ _]for[ _]production'
+const OTA_RE = /version[ _](\d+)[ _]for[ _]production/
+async function isAncestor(cwd, a, b) {
+  try { await exec('git', ['-C', cwd, 'merge-base', '--is-ancestor', a, b]); return true } catch { return false }
+}
+// 从 from 分支(fetch 后)解析最新的 production ota 版本号
+async function otaVersionOf(project) {
+  const m = MERGE[project]; const cwd = repoPath(m?.repo)
+  if (!cwd) return null
+  await git(cwd, ['fetch', 'origin', m.from]).catch(() => {})
+  const out = await git(cwd, ['log', `origin/${m.from}`, '-E', '--grep', OTA_GREP, '-1', '--pretty=%s']).catch(() => '')
+  const mm = String(out).match(OTA_RE)
+  return mm ? mm[1] : null
+}
 function shortErr(e) {
   const lines = String(e.stderr || e.message || e).trim().split('\n').filter(Boolean)
   return (lines[lines.length - 1] || '失败').slice(0, 140)
@@ -67,7 +83,7 @@ async function runFeishuSub(project) {
     const g = (await getRelease()).groups.find(x => x.project === project)
     if (!g) return { sub: { name: '拉取飞书发版内容', ok: false, error: '本周未找到该项目发版内容' } }
     return {
-      sub: { name: '拉取飞书发版内容', ok: true, result: g.versionName },
+      sub: { name: '拉取飞书发版内容', ok: true, result: `${g.versionName} · ${g.needPackage ? '需要发包' : '无需发包'}` },
       ctx: { versionName: g.versionName, stories: g.stories, needPackage: g.needPackage },
     }
   } catch (e) { return { sub: { name: '拉取飞书发版内容', ok: false, error: shortErr(e) } } }
@@ -77,9 +93,10 @@ async function runRepoSub(project, name) {
   if (!r) return { sub: { name, ok: false, error: '未知仓库' } }
   if (!r.path) return { sub: { name, ok: false, error: `未配置路径(private_key.json 顶层键 "${name}")` } }
   try {
+    await git(r.path, ['fetch', 'origin', r.branch])
     await git(r.path, ['checkout', '-f', r.branch])
+    await git(r.path, ['reset', '--hard', `origin/${r.branch}`])
     await git(r.path, ['clean', '-df'])
-    await git(r.path, ['pull', '--rebase', 'origin', r.branch])
     await git(r.path, ['submodule', 'update', '--init', '--recursive', '--force'])
     const line = await git(r.path, ['log', '-1', `--pretty=%h${SEP}%s${SEP}%an`])
     const [commit, subject, author] = line.split(SEP)
@@ -109,6 +126,82 @@ async function runPrepareSub(project, sub) {
   if (sub === 'check:level') return runCheckSub('检查关卡', ['level'])
   if (sub === 'ota') return { sub: { name: '打ota并发消息', ok: true, result: '已标记(暂未实际打ota/发消息)' } }
   if (sub.startsWith('repo:')) return runRepoSub(project, sub.slice(5))
+  throw new Error(`未知子流程: ${sub}`)
+}
+
+// ============ 发版后:幂等真实执行(先 precheck 真实状态,再决定跳过/执行一次) ============
+// beta合并到prod:拉最新 client(beta)→ 解析 ota 版本 → 本地 merge 到 prod 打 tag,不 push
+async function runMergeSub(project) {
+  const name = 'beta合并到prod'
+  const m = MERGE[project]; const cwd = repoPath('TripeaksClient')
+  if (!cwd) return { sub: { name, ok: false, error: '未配置 TripeaksClient 路径' } }
+  try {
+    await git(cwd, ['fetch', 'origin', m.from])
+    await git(cwd, ['checkout', '-f', m.from])
+    await git(cwd, ['reset', '--hard', `origin/${m.from}`])
+    await git(cwd, ['clean', '-df'])
+    await git(cwd, ['submodule', 'update', '--init', '--recursive', '--force'])
+    const out = await git(cwd, ['log', m.from, '-E', '--grep', OTA_GREP, '-1', '--pretty=%s']).catch(() => '')
+    const mm = String(out).match(OTA_RE); const ver = mm ? mm[1] : null
+    if (!ver) return { sub: { name, ok: false, error: 'beta 上未找到 production ota 提交,请先完成打 ota' } }
+    const tag = `${project.toLowerCase()}/${ver}`
+    const merged = await isAncestor(cwd, `origin/${m.from}`, m.to)
+    const tagExists = !!(await git(cwd, ['tag', '-l', tag]).catch(() => ''))
+    if (!merged) {
+      await git(cwd, ['checkout', '-f', m.to])
+      await git(cwd, ['merge', '--no-edit', `origin/${m.from}`])
+    }
+    if (!tagExists) await git(cwd, ['tag', tag])
+    await git(cwd, ['push', 'origin', m.to])
+    await git(cwd, ['push', 'origin', tag])
+    const head = await git(cwd, ['rev-parse', '--short', m.to])
+    return { sub: { name, ok: true, result: `client ${ver} · ${merged ? `prod 已含 ${m.from}` : `已合并 ${m.from} 到 ${m.to}`} (${head}),tag ${tag},已 push` }, ctx: { otaVersion: ver } }
+  } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
+}
+// 发版记录:precheck 查表是否已有该版本行,否则真实写入
+async function runRecordSub(project, operator, flow) {
+  const name = '填写发版记录'
+  try {
+    const ver = flow.context?.otaVersion || await otaVersionOf(project)
+    if (!ver) return { sub: { name, ok: false, error: '未解析到 ota 版本,请先完成打 ota / 合并' } }
+    const version = `${project.toLowerCase()}/${ver}`
+    const date = todayDot()
+    const found = await findRecord({ project, version, date })
+    if (found.exists) return { sub: { name, ok: true, skipped: true, result: `表中已存在(第 ${found.rowNumber} 行):${version}` }, ctx: { otaVersion: ver } }
+    const row = {
+      date, platform: flow.context?.needPackage ? 'ota/ios/android' : 'ota', version,
+      content: (flow.context?.stories || []).map((n, i) => `${i + 1}. ${n}`).join('\n'),
+      commit: flow.context?.resourceCommit || '',
+    }
+    const r = await fillRecord({ project, row, releaser: operator, dryRun: false })
+    return { sub: { name, ok: true, result: `已写入「${r.sheet}」:${version}` }, ctx: { otaVersion: ver } }
+  } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
+}
+function todayDot() { const d = new Date(); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}` }
+// ============ 数数报错(真实查询 jserror_new,按 msg 分组,区分全版本/最新版本) ============
+const SHUSHU_EVENT_TABLE = { TP1: 'ta.v_event_6', TP4: 'ta.v_event_2' }
+function pad2(n) { return String(n).padStart(2, '0') }
+function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
+// 只查本次发布版本(otaVersion):c_gameversion 精确过滤,按 msg 分组
+async function queryShushu(project, version) {
+  const table = SHUSHU_EVENT_TABLE[project]
+  if (!table) throw new Error(`未配置数数事件表: ${project}`)
+  const v = version != null && version !== '' ? String(version) : null
+  if (!v) throw new Error('未获取到本次发布版本(otaVersion),无法查询')
+  const now = Date.now()
+  const from = ymd(new Date(now - 2 * 86400000)), to = ymd(new Date(now + 86400000))
+  const sql = `SELECT "msg" msg, count(*) cnt FROM ${table} ` +
+    `WHERE "$part_date" BETWEEN '${from}' AND '${to}' AND "#event_name" = 'jserror_new' AND "c_gameversion" = '${v}' ` +
+    `GROUP BY "msg" ORDER BY cnt DESC`
+  const rows = await querySql(sql)
+  const groups = rows.map(r => ({ msg: r.msg || '(空)', count: Number(r.cnt) || 0 })).sort((a, b) => b.count - a.count)
+  return { days: 2, queriedAt: nowIso(), version: v, total: groups.reduce((s, x) => s + x.count, 0), groups }
+}
+
+async function runPostSub(flow, sub, operator) {
+  if (sub === 'merge') return runMergeSub(flow.project)
+  if (sub === 'record') return runRecordSub(flow.project, operator, flow)
+  if (sub === 'notify') return { sub: { name: '通知完毕', ok: true, result: '已标记(后续接飞书机器人自动发消息)' } }
   throw new Error(`未知子流程: ${sub}`)
 }
 
@@ -182,7 +275,17 @@ router.post('/flows/:id/abort', wrap(async (req, res) => {
 }))
 
 // ============ 大流程操作 ============
-// 正式环境:前端逐个调用本端点,一个子流程一次,执行完即返回结果。
+// 前端逐个调用,一个子流程一次,执行完即返回结果。
+function saveSub(id, stepKey, out, ctx, operator) {
+  return patchStep(id, stepKey, (f, s) => {
+    if (!s.subs) s.subs = []
+    const i = s.subs.findIndex(x => x.name === out.name)
+    if (i >= 0) s.subs[i] = out; else s.subs.push(out)
+    if (ctx) Object.assign(f.context, ctx)
+    s.status = 'running'
+  }, operator, `子流程 ${out.name} ${out.ok ? 'ok' : 'failed'}`)
+}
+// 发版前流程
 router.post('/flows/:id/prepare/sub', wrap(async (req, res) => {
   const flow = getFlow(req.params.id)
   const { stepKey, sub, operator } = req.body || {}
@@ -190,13 +293,32 @@ router.post('/flows/:id/prepare/sub', wrap(async (req, res) => {
   const t0 = Date.now()
   const { sub: out, ctx } = await runPrepareSub(flow.project, sub)
   out.ms = Date.now() - t0
-  res.json(await patchStep(req.params.id, stepKey, (f, s) => {
-    if (!s.subs) s.subs = []
-    const i = s.subs.findIndex(x => x.name === out.name)
-    if (i >= 0) s.subs[i] = out; else s.subs.push(out)
-    if (ctx) Object.assign(f.context, ctx)
-    s.status = 'running'
-  }, operator, `子流程 ${out.name} ${out.ok ? 'ok' : 'failed'}`))
+  res.json(await saveSub(req.params.id, stepKey, out, ctx, operator))
+}))
+// 发版后流程(幂等:先 precheck 真实状态)
+router.post('/flows/:id/post/sub', wrap(async (req, res) => {
+  const flow = getFlow(req.params.id)
+  const { stepKey, sub, operator } = req.body || {}
+  if (!sub) throw new Error('缺少 sub')
+  const t0 = Date.now()
+  const { sub: out, ctx } = await runPostSub(flow, sub, operator)
+  out.ms = Date.now() - t0
+  res.json(await saveSub(req.params.id, stepKey, out, ctx, operator))
+}))
+// 推送线上后通知群:线上 <版本> 已发
+router.post('/flows/:id/notify-pushed', wrap(async (req, res) => {
+  const flow = getFlow(req.params.id)
+  const ver = flow.context?.otaVersion || await otaVersionOf(flow.project)
+  const text = `线上 ${ver ? `${flow.project.toLowerCase()}/${ver}` : '版本'} 已发`
+  await sendBotMessage(text)
+  res.json({ ok: true, text })
+}))
+// 手动标记某子流程为已完成(线下修复后用)
+router.post('/flows/:id/sub/mark', wrap(async (req, res) => {
+  getFlow(req.params.id)
+  const { stepKey, name, operator } = req.body || {}
+  if (!stepKey || !name) throw new Error('缺少 stepKey/name')
+  res.json(await saveSub(req.params.id, stepKey, { name, ok: true, manual: true, result: '已手动标记完成' }, null, operator))
 }))
 
 router.post('/flows/:id/merge', wrap(async (req, res) => {
@@ -236,17 +358,36 @@ router.post('/flows/:id/shushu/start', wrap(async (req, res) => {
 router.post('/flows/:id/shushu/query', wrap(async (req, res) => {
   const flow = getFlow(req.params.id)
   const { stepKey, operator } = req.body || {}
-  const result = {
-    version: `${flow.project.toLowerCase()}/${flow.context?.otaVersion || '123'}`,
-    days: 2,
-    total: 0,
-    errors: [],
-    queriedAt: nowIso(),
-  }
+  let result, errMsg
+  try { result = await queryShushu(flow.project, flow.context?.otaVersion) } catch (e) { errMsg = shortErr(e) }
   res.json(await patchStep(req.params.id, stepKey, (f, s) => {
-    s.status = 'done'; s.doneBy = operator || ''; s.doneAt = nowIso(); s.result = result
-  }, operator, '数数查询(mock)'))
+    if (errMsg) { s.status = 'failed'; s.error = errMsg }
+    else { s.status = 'done'; s.doneBy = operator || ''; s.doneAt = nowIso(); s.result = result; delete s.error; delete s.mock }
+  }, operator, errMsg ? '数数查询失败' : '数数查询'))
 }))
+
+// 服务器端定时扫描:到点的数数倒计时(即使前端没打开)也会自动查询
+let sweeping = false
+async function sweepShushu() {
+  if (sweeping) return
+  sweeping = true
+  try {
+    const now = Date.now()
+    for (const f of store.list(COL)) {
+      if (f.status !== 'active') continue
+      for (const [key, s] of Object.entries(f.steps || {})) {
+        if (s.status !== 'running' || !s.countdownEndAt || s.result || Date.parse(s.countdownEndAt) > now) continue
+        try {
+          const result = await queryShushu(f.project, f.context?.otaVersion)
+          await patchStep(f.id, key, (ff, ss) => { ss.status = 'done'; ss.doneAt = nowIso(); ss.doneBy = 'system'; ss.result = result; delete ss.mock }, 'system', '数数查询(自动)')
+        } catch (e) {
+          await patchStep(f.id, key, (ff, ss) => { ss.status = 'failed'; ss.error = shortErr(e) }, 'system', '数数查询失败(自动)').catch(() => {})
+        }
+      }
+    }
+  } finally { sweeping = false }
+}
+setInterval(() => { sweepShushu().catch(() => {}) }, 60000)
 
 // 启动时:运行中的数数倒计时进程已不存在影响,这里无需 sweep(纯倒计时由前端依据 countdownEndAt 计算)
 

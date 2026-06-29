@@ -6,7 +6,9 @@
   "TripeaksAdventureConfig": "/abs/TripeaksAdventureConfig",
   "TripeaksLevelConfig": "/abs/TripeaksLevelConfig",
   "feishu": {
-    "mcp_token": "飞书项目 MCP token (m-xxxx)"
+    "mcp_token": "飞书项目 MCP token (m-xxxx)",
+    "webhook": "测试群自定义机器人 webhook (https://open.feishu.cn/open-apis/bot/v2/hook/xxxx)",
+    "webhookSecret": "(可选)机器人签名校验密钥,没开签名就删掉这行"
   },
   "shushu": {
     "token": "数数 querySql token"

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import https from 'https'
+import crypto from 'crypto'
 import secrets from '../config.js'
 
 const MCP_HOST = 'project.feishu.cn'
@@ -13,6 +14,22 @@ const config = secrets.feishu || {}
 
 function isConfigured() {
   return !!config.mcp_token
+}
+
+// 通过自定义群机器人 webhook 发文本消息(private_key.json 的 feishu.webhook,可选 feishu.webhookSecret 签名)
+export async function sendBotMessage(text) {
+  const url = config.webhook
+  if (!url) throw new Error('飞书群机器人 webhook 未配置(private_key.json 的 feishu.webhook)')
+  const body = { msg_type: 'text', content: { text } }
+  if (config.webhookSecret) {
+    const ts = Math.floor(Date.now() / 1000)
+    body.timestamp = String(ts)
+    body.sign = crypto.createHmac('sha256', `${ts}\n${config.webhookSecret}`).update('').digest('base64')
+  }
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const j = await r.json().catch(() => ({}))
+  if (j.code && j.code !== 0) throw new Error(`飞书机器人: ${j.msg || JSON.stringify(j)}`)
+  return j
 }
 
 function postMcp(body) {

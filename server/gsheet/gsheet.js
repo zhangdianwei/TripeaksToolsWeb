@@ -50,6 +50,20 @@ export async function fillRecord({ project, row, releaser, dryRun }) {
   return { ok: true, sheet: title }
 }
 
+export async function findRecord({ project, version, date }) {
+  if (!isConfigured()) throw new Error('Google Sheets 凭证未配置(private_key.json 的 gsheet 段)')
+  const year = String(date || '').split('.')[0]
+  if (!/^\d{4}$/.test(year)) throw new Error(`无法从日期解析年份: ${date}`)
+  const title = sheetName(project, year)
+  const sheets = getSheets()
+  await assertSheetExists(sheets, title)
+  const resp = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `'${title}'!A:F` })
+  const rows = resp.data.values || []
+  const key = String(version || '').trim()
+  const idx = key ? rows.findIndex(r => String(r[2] || '').trim() === key) : -1
+  return { sheet: title, exists: idx >= 0, rowNumber: idx >= 0 ? idx + 1 : 0 }
+}
+
 const router = Router()
 
 router.post('/fill', async (req, res) => {

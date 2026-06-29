@@ -29,6 +29,27 @@ function postForm(urlStr, params) {
   })
 }
 
+// 执行 SQL 并解析为对象数组(供发版流程数数报错使用)
+export async function querySql(sql) {
+  if (!SHUSHU_TOKEN) throw new Error('数数 token 未配置(private_key.json 的 shushu.token)')
+  const { text } = await postForm(SHUSHU_URL, { token: SHUSHU_TOKEN, sql, format: 'json' })
+  if (text.startsWith('<')) throw new Error('数数服务器错误或超时')
+  const lines = text.split('\n').map(s => s.trim()).filter(Boolean)
+  let headers = null
+  const rows = []
+  for (const line of lines) {
+    let v
+    try { v = JSON.parse(line) } catch { continue }
+    if (!headers) {
+      if (v && v.return_code != null && v.return_code !== 0) throw new Error(v.return_message || '数数查询失败')
+      headers = (v && v.data && v.data.headers) || []
+      continue
+    }
+    if (Array.isArray(v)) { const o = {}; headers.forEach((h, i) => { o[h] = v[i] }); rows.push(o) }
+  }
+  return rows
+}
+
 const router = Router()
 
 router.post('/query', async (req, res) => {

@@ -3,7 +3,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import secrets from '../config.js'
 import * as store from '../store/store.js'
-import { getRelease, sendBotMessage } from '../feishu/feishu.js'
+import { getRelease, sendBotCard } from '../feishu/feishu.js'
 import { querySql } from '../shushu/shushu.js'
 import { triggerOta } from '../jenkins/jenkins.js'
 import { fillRecord, findRecord } from '../gsheet/gsheet.js'
@@ -17,15 +17,6 @@ const OTA_GREP = 'Update[ _]ota[ _]files[ _]to[ _]version[ _][0-9]+[ _]for[ _]pr
 const OTA_RE = /version[ _](\d+)[ _]for[ _]production/
 async function isAncestor(cwd, a, b) {
   try { await exec('git', ['-C', cwd, 'merge-base', '--is-ancestor', a, b]); return true } catch { return false }
-}
-// 从 from 分支(fetch 后)解析最新的 production ota 版本号
-async function otaVersionOf(project) {
-  const m = MERGE[project]; const cwd = repoPath(m?.repo)
-  if (!cwd) return null
-  await git(cwd, ['fetch', 'origin', m.from]).catch(() => {})
-  const out = await git(cwd, ['log', `origin/${m.from}`, '-E', '--grep', OTA_GREP, '-1', '--pretty=%s']).catch(() => '')
-  const mm = String(out).match(OTA_RE)
-  return mm ? mm[1] : null
 }
 function shortErr(e) {
   const lines = String(e.stderr || e.message || e).trim().split('\n').filter(Boolean)
@@ -55,6 +46,21 @@ const repoPath = (name) => secrets[name] || ''
 // 群机器人 webhook(private_key.json 顶层 webhook 映射)
 const groupUrl = (name) => (secrets.webhook || {})[name]
 const devGroupUrl = (project) => groupUrl(`${project}研发群`)
+
+// ============ 飞书卡片内容(各通知统一风格) ============
+const RED = (s) => `<font color='#A61B29'>**${s}**</font>`
+function releaseCard(project, { versionName, needPackage, stories, releaseVersion, operator }) {
+  const top = `是否发包：${needPackage ? RED('是') : '否'}\n发布版本：${releaseVersion ? RED(releaseVersion) : '—'}\n操作人：${operator || '—'}`
+  const content = `**发版内容**\n${(stories || []).map((s, i) => `${i + 1}. ${s}`).join('\n') || '—'}`
+  return { title: versionName || `${project} · 今日发版`, template: 'blue', body: [top, content] }
+}
+function doneCard(project, version) {
+  return { title: `${project} · 发版完毕`, template: 'green', body: `客户端发版完毕\n版本：**${version || '—'}**` }
+}
+function shushuCard(project, r) {
+  const md = `app_start 触发用户数 ${r.appStartUsers} 人\njserror_new 数量 ${r.total ? RED(r.total) : 0}`
+  return { title: `${r.version} 报错情况`, template: r.total ? 'red' : 'green', body: md }
+}
 const projRepos = (p) => (PROJECT_REPOS[p] || []).map(r => ({ ...r, path: repoPath(r.name) }))
 const projMerge = (p) => { const m = MERGE[p]; return m ? { ...m, repo: repoPath(m.repo) } : null }
 
@@ -129,78 +135,108 @@ async function runOtaSub(flow) {
   try {
     const r = await triggerOta(flow.project, { branch: 'beta', production: true, syncTable: false, syncLevels: false, alert: true })
     return {
-      sub: { name, ok: true, result: r.build ? `ota 已开始构建(#${r.build})` : 'ota 已触发(排队中)' },
-      ctx: r.build ? { otaBuild: r.build } : null,
+      sub: { name, ok: true, result: r.build ? `ota 已开始构建,发布版本 ${r.build}` : 'ota 已触发(排队中)' },
+      ctx: r.build ? { releaseVersion: r.build } : null,
     }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }
 // 发消息:发版内容发到项目研发群(版本号用打ota存下的 build 号);发送失败不阻塞
-async function runOtaMsgSub(flow) {
+async function runOtaMsgSub(flow, operator) {
   const name = '通知到群'
   const c = flow.context || {}
   const content = (c.stories || []).map((s, i) => `${i + 1}. ${s}`).join('\n')
-  const smoke = c.otaBuild ? `\n版本号${c.otaBuild},可以smoke。` : '\n可以smoke。'
-  const text = `今日发版：${c.versionName || ''}\n是否发包：${c.needPackage ? '是' : '否'}\n发版内容：\n${content}${smoke}`
+  const smoke = c.releaseVersion ? `版本号${c.releaseVersion},可以smoke。` : '可以smoke。'
+  const text = `今日发版：${c.versionName || ''}\n是否发包：${c.needPackage ? '是' : '否'}\n发版内容:\n${content}\n${smoke}`
   let note = ''
-  try { await sendBotMessage(text, devGroupUrl(flow.project)) } catch (e) { note = `\n(通知失败:${shortErr(e)})` }
+  try { await sendBotCard(devGroupUrl(flow.project), releaseCard(flow.project, { ...c, operator })) } catch (e) { note = `\n(通知失败:${shortErr(e)})` }
   return { sub: { name, ok: true, result: text + note } }
 }
-async function runPrepareSub(flow, sub) {
+async function runPrepareSub(flow, sub, operator) {
   const project = flow.project
   if (sub === 'feishu') return runFeishuSub(project)
   if (sub === 'check:res') return runCheckSub('检查资源', ['res', '--all'])
   if (sub === 'check:table') return runCheckSub('检查配置表', ['table'])
   if (sub === 'check:level') return runCheckSub('检查关卡', ['level'])
   if (sub === 'ota') return runOtaSub(flow)
-  if (sub === 'otamsg') return runOtaMsgSub(flow)
+  if (sub === 'otamsg') return runOtaMsgSub(flow, operator)
   if (sub.startsWith('repo:')) return runRepoSub(project, sub.slice(5))
   throw new Error(`未知子流程: ${sub}`)
 }
 
 // ============ 发版后:幂等真实执行(先 precheck 真实状态,再决定跳过/执行一次) ============
-// beta合并到prod:拉最新 client(beta)→ 解析 ota 版本 → 本地 merge 到 prod 打 tag,不 push
-async function runMergeSub(project) {
-  const name = 'beta合并到prod'
+// beta合并到prod:beta 和 prod 都对齐到最新 → 解析 ota 版本 → 本地 merge 到 prod 打 tag,不 push
+const alignBranch = async (cwd, branch) => {
+  await git(cwd, ['fetch', 'origin', branch])
+  await git(cwd, ['checkout', '-f', branch])
+  await git(cwd, ['reset', '--hard', `origin/${branch}`])
+  await git(cwd, ['clean', '-df'])
+  await git(cwd, ['submodule', 'update', '--init', '--recursive', '--force'])
+}
+// 更新 TripeaksClient(对齐到最新 beta),返回 commit/msg/author
+async function runUpdateClientSub(project) {
+  const name = '更新TripeaksClient'
   const m = MERGE[project]; const cwd = repoPath('TripeaksClient')
   if (!cwd) return { sub: { name, ok: false, error: '未配置 TripeaksClient 路径' } }
   try {
-    await git(cwd, ['fetch', 'origin', m.from])
-    await git(cwd, ['checkout', '-f', m.from])
-    await git(cwd, ['reset', '--hard', `origin/${m.from}`])
-    await git(cwd, ['clean', '-df'])
-    await git(cwd, ['submodule', 'update', '--init', '--recursive', '--force'])
-    const out = await git(cwd, ['log', m.from, '-E', '--grep', OTA_GREP, '-1', '--pretty=%s']).catch(() => '')
-    const mm = String(out).match(OTA_RE); const ver = mm ? mm[1] : null
-    if (!ver) return { sub: { name, ok: false, error: 'beta 上未找到 production ota 提交,请先完成打 ota' } }
-    const tag = `${project.toLowerCase()}/${ver}`
-    const merged = await isAncestor(cwd, `origin/${m.from}`, m.to)
-    const tagExists = !!(await git(cwd, ['tag', '-l', tag]).catch(() => ''))
-    if (!merged) {
-      await git(cwd, ['checkout', '-f', m.to])
-      await git(cwd, ['merge', '--no-edit', `origin/${m.from}`])
-    }
-    if (!tagExists) await git(cwd, ['tag', tag])
-    const head = await git(cwd, ['rev-parse', '--short', m.to])
-    return { sub: { name, ok: true, result: `client ${ver} · ${merged ? `prod 已含 ${m.from}` : `已合并 ${m.from} 到 ${m.to}`} (${head}),tag ${tag}(本地,未 push)` }, ctx: { otaVersion: ver } }
+    await alignBranch(cwd, m.from)
+    const line = await git(cwd, ['log', '-1', `--pretty=%h${SEP}%s${SEP}%an`])
+    const [commit, subject, author] = line.split(SEP)
+    return { sub: { name, ok: true, commit, subject, author, result: `${commit} ${subject} · ${author}` } }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }
-// 发版记录:precheck 查表是否已有该版本行,否则真实写入
+// 检查版本号一致性:beta 上的 production 版本号 == 发布版本
+async function runCheckVersionSub(flow) {
+  const name = '检查版本号一致性'
+  const rv = flow.context?.releaseVersion
+  if (!rv) return { sub: { name, ok: false, error: '未记录发布版本(打 ota 未完成?)' } }
+  const m = MERGE[flow.project]; const cwd = repoPath('TripeaksClient')
+  if (!cwd) return { sub: { name, ok: false, error: '未配置 TripeaksClient 路径' } }
+  try {
+    const out = await git(cwd, ['log', m.from, '-E', '--grep', OTA_GREP, '-1', '--pretty=%s']).catch(() => '')
+    const mm = String(out).match(OTA_RE); const cur = mm ? mm[1] : null
+    if (cur == null) return { sub: { name, ok: false, error: 'beta 上未找到 production ota 提交' } }
+    if (String(cur) !== String(rv)) return { sub: { name, ok: false, error: `不一致:beta production=${cur},发布版本=${rv}` } }
+    return { sub: { name, ok: true, result: `一致:${cur}` } }
+  } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
+}
+// beta合并到prod:对齐 prod → merge origin/beta → 打 tag(用发布版本),不 push
+async function runMergeSub(project, releaseVersion) {
+  const name = 'beta合并到prod'
+  const m = MERGE[project]; const cwd = repoPath('TripeaksClient')
+  if (!cwd) return { sub: { name, ok: false, error: '未配置 TripeaksClient 路径' } }
+  if (!releaseVersion) return { sub: { name, ok: false, error: '未记录发布版本' } }
+  try {
+    await git(cwd, ['fetch', 'origin', m.from])
+    await alignBranch(cwd, m.to)
+    const tag = `${project.toLowerCase()}/${releaseVersion}`
+    const merged = await isAncestor(cwd, `origin/${m.from}`, m.to)
+    const tagExists = !!(await git(cwd, ['tag', '-l', tag]).catch(() => ''))
+    if (!merged) await git(cwd, ['merge', '--no-edit', `origin/${m.from}`])
+    if (!tagExists) await git(cwd, ['tag', tag])
+    const head = await git(cwd, ['rev-parse', '--short', m.to])
+    return { sub: { name, ok: true, result: `${merged ? `prod 已含 ${m.from}` : `已合并 ${m.from} 到 ${m.to}`} (${head}),tag ${tag}(本地,未 push)` } }
+  } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
+}
+// 发版记录:precheck 查表是否已有该版本行,否则真实写入(含 Resources commit)
 async function runRecordSub(project, operator, flow) {
   const name = '填写发版记录'
+  const rv = flow.context?.releaseVersion
+  if (!rv) return { sub: { name, ok: false, error: '未记录发布版本,请先完成打 ota' } }
   try {
-    const ver = flow.context?.otaVersion || await otaVersionOf(project)
-    if (!ver) return { sub: { name, ok: false, error: '未解析到 ota 版本,请先完成打 ota / 合并' } }
-    const version = `${project.toLowerCase()}/${ver}`
+    const version = `${project.toLowerCase()}/${rv}`
     const date = todayDot()
+    const rp = repoPath('TripeaksResources')
+    let resourceCommit = rp ? await git(rp, ['rev-parse', 'HEAD']).catch(() => '') : ''
+    if (!resourceCommit) resourceCommit = flow.context?.resourceCommit || ''
     const found = await findRecord({ project, version, date })
-    if (found.exists) return { sub: { name, ok: true, skipped: true, result: `表中已存在(第 ${found.rowNumber} 行):${version}` }, ctx: { otaVersion: ver } }
+    if (found.exists) return { sub: { name, ok: true, skipped: true, result: `表中已存在(第 ${found.rowNumber} 行):${version}` } }
     const row = {
       date, platform: flow.context?.needPackage ? 'ota/ios/android' : 'ota', version,
       content: (flow.context?.stories || []).map((n, i) => `${i + 1}. ${n}`).join('\n'),
-      commit: flow.context?.resourceCommit || '',
+      commit: resourceCommit || '',
     }
     const r = await fillRecord({ project, row, releaser: operator, dryRun: false })
-    return { sub: { name, ok: true, result: `已写入「${r.sheet}」:${version}` }, ctx: { otaVersion: ver } }
+    return { sub: { name, ok: true, result: `已写入「${r.sheet}」:${version}(ResourcesCommit ${resourceCommit || '—'})` } }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }
 function todayDot() { const d = new Date(); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}` }
@@ -208,45 +244,40 @@ function todayDot() { const d = new Date(); return `${d.getFullYear()}.${d.getMo
 const SHUSHU_EVENT_TABLE = { TP1: 'ta.v_event_6', TP4: 'ta.v_event_2' }
 function pad2(n) { return String(n).padStart(2, '0') }
 function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
-// 只查本次发布版本(otaVersion):c_gameversion 精确过滤,按 msg 分组
+// 只查本次发布版本:c_gameversion 精确过滤,按 msg 分组
 async function queryShushu(project, version) {
   const table = SHUSHU_EVENT_TABLE[project]
   if (!table) throw new Error(`未配置数数事件表: ${project}`)
   const v = version != null && version !== '' ? String(version) : null
-  if (!v) throw new Error('未获取到本次发布版本(otaVersion),无法查询')
+  if (!v) throw new Error('未记录发布版本,无法查询')
   const now = Date.now()
   const from = ymd(new Date(now - 2 * 86400000)), to = ymd(new Date(now + 86400000))
-  const sql = `SELECT "msg" msg, count(*) cnt FROM ${table} ` +
-    `WHERE "$part_date" BETWEEN '${from}' AND '${to}' AND "#event_name" = 'jserror_new' AND "c_gameversion" = '${v}' ` +
-    `GROUP BY "msg" ORDER BY cnt DESC`
-  const rows = await querySql(sql)
+  const where = `WHERE "$part_date" BETWEEN '${from}' AND '${to}' AND "c_gameversion" = '${v}'`
+  const startRows = await querySql(`SELECT count(distinct "#account_id") cnt FROM ${table} ${where} AND "#event_name" = 'app_start'`)
+  const appStartUsers = Number(startRows[0]?.cnt) || 0
+  const rows = await querySql(`SELECT "msg" msg, count(*) cnt FROM ${table} ${where} AND "#event_name" = 'jserror_new' GROUP BY "msg" ORDER BY cnt DESC`)
   const groups = rows.map(r => ({ msg: r.msg || '(空)', count: Number(r.cnt) || 0 })).sort((a, b) => b.count - a.count)
-  return { days: 2, queriedAt: nowIso(), version: v, total: groups.reduce((s, x) => s + x.count, 0), groups }
+  return { days: 2, queriedAt: nowIso(), version: v, appStartUsers, total: groups.reduce((s, x) => s + x.count, 0), groups }
 }
 // 数数结果发到客户端群(近2天 jserror_new,按 msg)
-function shushuMsg(project, r) {
-  const head = `${project} 数数报错(近${r.days}天 jserror_new,版本 ${r.version})`
-  if (!r.total) return `${head}\n无报错`
-  const lines = r.groups.slice(0, 20).map((g, i) => `${i + 1}. ${String(g.msg).slice(0, 120)} ×${g.count}`)
-  const more = r.groups.length > 20 ? `\n…其余 ${r.groups.length - 20} 类` : ''
-  return `${head}\n共 ${r.total} 条\n${lines.join('\n')}${more}`
-}
 function notifyShushu(project, result) {
-  return sendBotMessage(shushuMsg(project, result), groupUrl('客户端群')).catch(() => {})
+  return sendBotCard(groupUrl('客户端群'), shushuCard(project, result)).catch(() => {})
 }
 
 // 通知完毕:发"客户端发版完毕"到项目研发群
 async function runNotifySub(flow) {
-  const name = '通知完毕'
-  const ver = flow.context?.otaVersion ? `\n版本号 ${flow.project.toLowerCase()}/${flow.context.otaVersion}` : ''
-  const text = `${flow.project} 客户端发版完毕${ver}`
+  const name = '通知发版完毕'
+  const version = flow.context?.releaseVersion ? `${flow.project.toLowerCase()}/${flow.context.releaseVersion}` : ''
+  const text = `${flow.project} 客户端发版完毕${version ? `\n版本号 ${version}` : ''}`
   try {
-    await sendBotMessage(text, devGroupUrl(flow.project))
+    await sendBotCard(devGroupUrl(flow.project), doneCard(flow.project, version))
     return { sub: { name, ok: true, result: text } }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }
 async function runPostSub(flow, sub, operator) {
-  if (sub === 'merge') return runMergeSub(flow.project)
+  if (sub === 'updateclient') return runUpdateClientSub(flow.project)
+  if (sub === 'checkversion') return runCheckVersionSub(flow)
+  if (sub === 'merge') return runMergeSub(flow.project, flow.context?.releaseVersion)
   if (sub === 'record') return runRecordSub(flow.project, operator, flow)
   if (sub === 'notify') return runNotifySub(flow)
   throw new Error(`未知子流程: ${sub}`)
@@ -280,7 +311,11 @@ function patchStep(id, stepKey, fn, op, detail) {
 // ============ 流程 CRUD ============
 router.get('/config', wrap(async (req, res) => {
   const repos = projRepos(req.query.project)
-  res.json({ project: req.query.project, repos, merge: projMerge(req.query.project), configured: repos.every(r => r.path) })
+  const pushJenkins = (secrets['推送线上jenkins'] || {})[String(req.query.project || '').toLowerCase()]
+  const jk = secrets.jenkins || {}
+  const pkgJob = (jk.pkgProdJob || {})[req.query.project]
+  const pkgProdJenkins = pkgJob && jk.baseUrl ? `${jk.baseUrl}/job/${pkgJob}/` : undefined
+  res.json({ project: req.query.project, repos, merge: projMerge(req.query.project), pushJenkins, pkgProdJenkins, configured: repos.every(r => r.path) })
 }))
 
 router.get('/flows', wrap(async (req, res) => {
@@ -338,7 +373,7 @@ router.post('/flows/:id/prepare/sub', wrap(async (req, res) => {
   const { stepKey, sub, operator } = req.body || {}
   if (!sub) throw new Error('缺少 sub')
   const t0 = Date.now()
-  const { sub: out, ctx } = await runPrepareSub(flow, sub)
+  const { sub: out, ctx } = await runPrepareSub(flow, sub, operator)
   out.ms = Date.now() - t0
   res.json(await saveSub(req.params.id, stepKey, out, ctx, operator))
 }))
@@ -352,50 +387,11 @@ router.post('/flows/:id/post/sub', wrap(async (req, res) => {
   out.ms = Date.now() - t0
   res.json(await saveSub(req.params.id, stepKey, out, ctx, operator))
 }))
-// 推送线上后通知群:线上 <版本> 已发
-router.post('/flows/:id/notify-pushed', wrap(async (req, res) => {
-  const flow = getFlow(req.params.id)
-  const ver = flow.context?.otaVersion || await otaVersionOf(flow.project)
-  const text = `线上 ${ver ? `${flow.project.toLowerCase()}/${ver}` : '版本'} 已发`
-  await sendBotMessage(text, devGroupUrl(flow.project))
-  res.json({ ok: true, text })
-}))
-// 手动标记某子流程为已完成(线下修复后用)
-router.post('/flows/:id/sub/mark', wrap(async (req, res) => {
-  getFlow(req.params.id)
-  const { stepKey, name, operator } = req.body || {}
-  if (!stepKey || !name) throw new Error('缺少 stepKey/name')
-  res.json(await saveSub(req.params.id, stepKey, { name, ok: true, manual: true, result: '已手动标记完成' }, null, operator))
-}))
-
-router.post('/flows/:id/merge', wrap(async (req, res) => {
-  const flow = getFlow(req.params.id)
-  const { stepKey, operator, from, to, tag } = req.body || {}
-  res.json(await patchStep(req.params.id, stepKey, (f, s) => {
-    s.status = 'done'; s.doneBy = operator || ''; s.doneAt = nowIso(); s.mock = true
-    s.from = from || ''; s.to = to || ''
-    s.mergeCommit = 'def5678'
-    s.tag = tag || ''
-    s.mergedLog = `${from || 'beta'} → ${to || 'prod'} (mock merge def5678)${tag ? `\ntag: ${tag}` : ''}`
-  }, operator, `合并(mock) ${tag || ''}`))
-}))
-
-router.post('/flows/:id/record', wrap(async (req, res) => {
-  const flow = getFlow(req.params.id)
-  const { stepKey, operator, row } = req.body || {}
-  const year = String(row?.date || '').split('.')[0] || String(new Date().getFullYear())
-  const sheet = `${year}发版记录-${flow.project.toLowerCase()}`
-  res.json(await patchStep(req.params.id, stepKey, (f, s) => {
-    s.status = 'done'; s.doneBy = operator || ''; s.doneAt = nowIso(); s.mock = true
-    s.sheet = sheet; s.row = row
-  }, operator, `填记录(mock) ${sheet}`))
-}))
-
 // 数数:启动倒计时(记录截止时间) + 倒计时结束后真实查询
 router.post('/flows/:id/shushu/start', wrap(async (req, res) => {
   getFlow(req.params.id)
   const { stepKey, operator, minutes } = req.body || {}
-  const mins = Number(minutes) || 30
+  const mins = Number(minutes) || 20
   const endAt = new Date(Date.now() + mins * 60000).toISOString()
   res.json(await patchStep(req.params.id, stepKey, (f, s) => {
     s.status = 'running'; s.minutes = mins; s.countdownEndAt = endAt; s.result = null
@@ -406,12 +402,14 @@ router.post('/flows/:id/shushu/query', wrap(async (req, res) => {
   const flow = getFlow(req.params.id)
   const { stepKey, operator } = req.body || {}
   let result, errMsg
-  try { result = await queryShushu(flow.project, flow.context?.otaVersion) } catch (e) { errMsg = shortErr(e) }
+  try {
+    result = await queryShushu(flow.project, flow.context?.releaseVersion)
+  } catch (e) { errMsg = shortErr(e) }
   if (result) await notifyShushu(flow.project, result)
   res.json(await patchStep(req.params.id, stepKey, (f, s) => {
-    if (errMsg) { s.status = 'failed'; s.error = errMsg }
-    else { s.status = 'done'; s.doneBy = operator || ''; s.doneAt = nowIso(); s.result = result; delete s.error; delete s.mock }
-  }, operator, errMsg ? '数数查询失败' : '数数查询'))
+    s.status = 'done'; s.doneBy = operator || ''; s.doneAt = nowIso(); delete s.mock
+    if (errMsg) { s.error = errMsg; s.result = null } else { s.result = result; delete s.error }
+  }, operator, errMsg ? '数数查询(出错,已标记完成)' : '数数查询'))
 }))
 
 // 服务器端定时扫描:到点的数数倒计时(即使前端没打开)也会自动查询
@@ -424,13 +422,14 @@ async function sweepShushu() {
     for (const f of store.list(COL)) {
       if (f.status !== 'active') continue
       for (const [key, s] of Object.entries(f.steps || {})) {
+        // 前端不再自动查询,数数查询/通知统一由 sweep 触发(单一来源,不会双通知)
         if (s.status !== 'running' || !s.countdownEndAt || s.result || Date.parse(s.countdownEndAt) > now) continue
         try {
-          const result = await queryShushu(f.project, f.context?.otaVersion)
+          const result = await queryShushu(f.project, f.context?.releaseVersion)
           await notifyShushu(f.project, result)
           await patchStep(f.id, key, (ff, ss) => { ss.status = 'done'; ss.doneAt = nowIso(); ss.doneBy = 'system'; ss.result = result; delete ss.mock }, 'system', '数数查询(自动)')
         } catch (e) {
-          await patchStep(f.id, key, (ff, ss) => { ss.status = 'failed'; ss.error = shortErr(e) }, 'system', '数数查询失败(自动)').catch(() => {})
+          await patchStep(f.id, key, (ff, ss) => { ss.status = 'done'; ss.doneAt = nowIso(); ss.doneBy = 'system'; ss.error = shortErr(e); ss.result = null }, 'system', '数数查询(自动,出错)').catch(() => {})
         }
       }
     }

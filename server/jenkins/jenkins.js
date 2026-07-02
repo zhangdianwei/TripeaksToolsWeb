@@ -48,14 +48,3 @@ export async function triggerOta(project, params) {
   }
   return { ok: true, build, buildUrl, job }
 }
-
-// 获取最新构建号(GET /job/<job>/lastBuild/buildNumber)
-export async function getLastBuildNumber(project) {
-  const base = cfg().baseUrl
-  const job = (cfg().otaJob || {})[project]
-  if (!base || !job) return null
-  const r = await fetch(`${base}/job/${job}/lastBuild/buildNumber`)
-  if (!r.ok) return null
-  const t = (await r.text()).trim()
-  return /^\d+$/.test(t) ? t : null
-}

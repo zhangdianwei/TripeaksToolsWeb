@@ -16,20 +16,33 @@ function isConfigured() {
   return !!config.mcp_token
 }
 
-// 通过自定义群机器人 webhook 发文本消息;url 不传则回退到 feishu.webhook
-export async function sendBotMessage(text, url) {
-  const target = url || config.webhook
-  if (!target) throw new Error('飞书群机器人 webhook 未配置')
-  const body = { msg_type: 'text', content: { text } }
+// 向群机器人 webhook POST 消息(可选 feishu.webhookSecret 签名)
+async function postWebhook(url, body) {
+  if (!url) throw new Error('未指定飞书群 webhook')
   if (config.webhookSecret) {
     const ts = Math.floor(Date.now() / 1000)
     body.timestamp = String(ts)
     body.sign = crypto.createHmac('sha256', `${ts}\n${config.webhookSecret}`).update('').digest('base64')
   }
-  const r = await fetch(target, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const j = await r.json().catch(() => ({}))
   if (j.code && j.code !== 0) throw new Error(`飞书机器人: ${j.msg || JSON.stringify(j)}`)
   return j
+}
+// 朴素卡片:标题栏(template)+ 正文 body;body 为数组时每段一个 div,段间用分割线
+export function sendBotCard(url, { title, template = 'blue', body }) {
+  const bodies = Array.isArray(body) ? body : (body ? [body] : [])
+  const elements = []
+  bodies.forEach(b => {
+    if (elements.length) elements.push({ tag: 'hr' })
+    elements.push({ tag: 'div', text: { tag: 'lark_md', content: b } })
+  })
+  const card = {
+    config: { wide_screen_mode: true },
+    header: { title: { tag: 'plain_text', content: title }, template },
+    elements,
+  }
+  return postWebhook(url, { msg_type: 'interactive', card })
 }
 
 function postMcp(body) {

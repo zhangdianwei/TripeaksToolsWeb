@@ -5,9 +5,10 @@ import secrets from '../config.js'
 import * as store from '../store/store.js'
 import { getRelease, sendBotMessage } from '../feishu/feishu.js'
 import { querySql } from '../shushu/shushu.js'
+import { triggerOta } from '../jenkins/jenkins.js'
 import { fillRecord, findRecord } from '../gsheet/gsheet.js'
 
-// 说明:发版前(prepare)、发版后(post:合并/记录)真实执行;通知为占位,数数仍为模拟。
+// 说明:常规发版各步(发版前/推送/发版后/数数/通知)均真实执行;热更流程的 merge/record 仍为 mock。
 const exec = promisify(execFile)
 // compile.coffee 的 shebang 是相对路径,macOS 链式解析不可靠,显式用 coffee 解释器执行。
 const COFFEE = './node_modules/coffee-script/bin/coffee'
@@ -51,6 +52,9 @@ const MERGE = {
   TP4: { repo: 'TripeaksClient', from: 'tripeaks4p/beta', to: 'tripeaks4p/prod' },
 }
 const repoPath = (name) => secrets[name] || ''
+// 群机器人 webhook(private_key.json 顶层 webhook 映射)
+const groupUrl = (name) => (secrets.webhook || {})[name]
+const devGroupUrl = (project) => groupUrl(`${project}研发群`)
 const projRepos = (p) => (PROJECT_REPOS[p] || []).map(r => ({ ...r, path: repoPath(r.name) }))
 const projMerge = (p) => { const m = MERGE[p]; return m ? { ...m, repo: repoPath(m.repo) } : null }
 
@@ -119,12 +123,36 @@ async function runCheckSub(name, args) {
     return { sub: { name, ok: false, result: full.slice(0, 4000) } }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }
-async function runPrepareSub(project, sub) {
+// 打 ota:触发 Jenkins 构建,等构建开始拿到 build 号存入 context
+async function runOtaSub(flow) {
+  const name = '打ota'
+  try {
+    const r = await triggerOta(flow.project, { branch: 'beta', production: true, syncTable: false, syncLevels: false, alert: true })
+    return {
+      sub: { name, ok: true, result: r.build ? `ota 已开始构建(#${r.build})` : 'ota 已触发(排队中)' },
+      ctx: r.build ? { otaBuild: r.build } : null,
+    }
+  } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
+}
+// 发消息:发版内容发到项目研发群(版本号用打ota存下的 build 号);发送失败不阻塞
+async function runOtaMsgSub(flow) {
+  const name = '通知到群'
+  const c = flow.context || {}
+  const content = (c.stories || []).map((s, i) => `${i + 1}. ${s}`).join('\n')
+  const smoke = c.otaBuild ? `\n版本号${c.otaBuild},可以smoke。` : '\n可以smoke。'
+  const text = `今日发版：${c.versionName || ''}\n是否发包：${c.needPackage ? '是' : '否'}\n发版内容：\n${content}${smoke}`
+  let note = ''
+  try { await sendBotMessage(text, devGroupUrl(flow.project)) } catch (e) { note = `\n(通知失败:${shortErr(e)})` }
+  return { sub: { name, ok: true, result: text + note } }
+}
+async function runPrepareSub(flow, sub) {
+  const project = flow.project
   if (sub === 'feishu') return runFeishuSub(project)
   if (sub === 'check:res') return runCheckSub('检查资源', ['res', '--all'])
   if (sub === 'check:table') return runCheckSub('检查配置表', ['table'])
   if (sub === 'check:level') return runCheckSub('检查关卡', ['level'])
-  if (sub === 'ota') return { sub: { name: '打ota并发消息', ok: true, result: '已标记(暂未实际打ota/发消息)' } }
+  if (sub === 'ota') return runOtaSub(flow)
+  if (sub === 'otamsg') return runOtaMsgSub(flow)
   if (sub.startsWith('repo:')) return runRepoSub(project, sub.slice(5))
   throw new Error(`未知子流程: ${sub}`)
 }
@@ -152,10 +180,8 @@ async function runMergeSub(project) {
       await git(cwd, ['merge', '--no-edit', `origin/${m.from}`])
     }
     if (!tagExists) await git(cwd, ['tag', tag])
-    await git(cwd, ['push', 'origin', m.to])
-    await git(cwd, ['push', 'origin', tag])
     const head = await git(cwd, ['rev-parse', '--short', m.to])
-    return { sub: { name, ok: true, result: `client ${ver} · ${merged ? `prod 已含 ${m.from}` : `已合并 ${m.from} 到 ${m.to}`} (${head}),tag ${tag},已 push` }, ctx: { otaVersion: ver } }
+    return { sub: { name, ok: true, result: `client ${ver} · ${merged ? `prod 已含 ${m.from}` : `已合并 ${m.from} 到 ${m.to}`} (${head}),tag ${tag}(本地,未 push)` }, ctx: { otaVersion: ver } }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }
 // 发版记录:precheck 查表是否已有该版本行,否则真实写入
@@ -197,11 +223,32 @@ async function queryShushu(project, version) {
   const groups = rows.map(r => ({ msg: r.msg || '(空)', count: Number(r.cnt) || 0 })).sort((a, b) => b.count - a.count)
   return { days: 2, queriedAt: nowIso(), version: v, total: groups.reduce((s, x) => s + x.count, 0), groups }
 }
+// 数数结果发到客户端群(近2天 jserror_new,按 msg)
+function shushuMsg(project, r) {
+  const head = `${project} 数数报错(近${r.days}天 jserror_new,版本 ${r.version})`
+  if (!r.total) return `${head}\n无报错`
+  const lines = r.groups.slice(0, 20).map((g, i) => `${i + 1}. ${String(g.msg).slice(0, 120)} ×${g.count}`)
+  const more = r.groups.length > 20 ? `\n…其余 ${r.groups.length - 20} 类` : ''
+  return `${head}\n共 ${r.total} 条\n${lines.join('\n')}${more}`
+}
+function notifyShushu(project, result) {
+  return sendBotMessage(shushuMsg(project, result), groupUrl('客户端群')).catch(() => {})
+}
 
+// 通知完毕:发"客户端发版完毕"到项目研发群
+async function runNotifySub(flow) {
+  const name = '通知完毕'
+  const ver = flow.context?.otaVersion ? `\n版本号 ${flow.project.toLowerCase()}/${flow.context.otaVersion}` : ''
+  const text = `${flow.project} 客户端发版完毕${ver}`
+  try {
+    await sendBotMessage(text, devGroupUrl(flow.project))
+    return { sub: { name, ok: true, result: text } }
+  } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
+}
 async function runPostSub(flow, sub, operator) {
   if (sub === 'merge') return runMergeSub(flow.project)
   if (sub === 'record') return runRecordSub(flow.project, operator, flow)
-  if (sub === 'notify') return { sub: { name: '通知完毕', ok: true, result: '已标记(后续接飞书机器人自动发消息)' } }
+  if (sub === 'notify') return runNotifySub(flow)
   throw new Error(`未知子流程: ${sub}`)
 }
 
@@ -291,7 +338,7 @@ router.post('/flows/:id/prepare/sub', wrap(async (req, res) => {
   const { stepKey, sub, operator } = req.body || {}
   if (!sub) throw new Error('缺少 sub')
   const t0 = Date.now()
-  const { sub: out, ctx } = await runPrepareSub(flow.project, sub)
+  const { sub: out, ctx } = await runPrepareSub(flow, sub)
   out.ms = Date.now() - t0
   res.json(await saveSub(req.params.id, stepKey, out, ctx, operator))
 }))
@@ -310,7 +357,7 @@ router.post('/flows/:id/notify-pushed', wrap(async (req, res) => {
   const flow = getFlow(req.params.id)
   const ver = flow.context?.otaVersion || await otaVersionOf(flow.project)
   const text = `线上 ${ver ? `${flow.project.toLowerCase()}/${ver}` : '版本'} 已发`
-  await sendBotMessage(text)
+  await sendBotMessage(text, devGroupUrl(flow.project))
   res.json({ ok: true, text })
 }))
 // 手动标记某子流程为已完成(线下修复后用)
@@ -344,14 +391,14 @@ router.post('/flows/:id/record', wrap(async (req, res) => {
   }, operator, `填记录(mock) ${sheet}`))
 }))
 
-// 数数:启动倒计时(记录截止时间) + 倒计时结束后查询(mock)
+// 数数:启动倒计时(记录截止时间) + 倒计时结束后真实查询
 router.post('/flows/:id/shushu/start', wrap(async (req, res) => {
   getFlow(req.params.id)
   const { stepKey, operator, minutes } = req.body || {}
   const mins = Number(minutes) || 30
   const endAt = new Date(Date.now() + mins * 60000).toISOString()
   res.json(await patchStep(req.params.id, stepKey, (f, s) => {
-    s.status = 'running'; s.minutes = mins; s.countdownEndAt = endAt; s.result = null; s.mock = true
+    s.status = 'running'; s.minutes = mins; s.countdownEndAt = endAt; s.result = null
   }, operator, `数数倒计时 ${mins}min`))
 }))
 
@@ -360,6 +407,7 @@ router.post('/flows/:id/shushu/query', wrap(async (req, res) => {
   const { stepKey, operator } = req.body || {}
   let result, errMsg
   try { result = await queryShushu(flow.project, flow.context?.otaVersion) } catch (e) { errMsg = shortErr(e) }
+  if (result) await notifyShushu(flow.project, result)
   res.json(await patchStep(req.params.id, stepKey, (f, s) => {
     if (errMsg) { s.status = 'failed'; s.error = errMsg }
     else { s.status = 'done'; s.doneBy = operator || ''; s.doneAt = nowIso(); s.result = result; delete s.error; delete s.mock }
@@ -379,6 +427,7 @@ async function sweepShushu() {
         if (s.status !== 'running' || !s.countdownEndAt || s.result || Date.parse(s.countdownEndAt) > now) continue
         try {
           const result = await queryShushu(f.project, f.context?.otaVersion)
+          await notifyShushu(f.project, result)
           await patchStep(f.id, key, (ff, ss) => { ss.status = 'done'; ss.doneAt = nowIso(); ss.doneBy = 'system'; ss.result = result; delete ss.mock }, 'system', '数数查询(自动)')
         } catch (e) {
           await patchStep(f.id, key, (ff, ss) => { ss.status = 'failed'; ss.error = shortErr(e) }, 'system', '数数查询失败(自动)').catch(() => {})

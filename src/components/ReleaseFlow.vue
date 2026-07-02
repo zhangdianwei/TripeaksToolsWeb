@@ -111,14 +111,15 @@ const SUB_PLANS = {
     list.push({ id: "check:res", name: "检查资源", title: "检查资源", cmd: "./compile.coffee res --all\ngit status" });
     list.push({ id: "check:table", name: "检查配置表", title: "检查配置表", cmd: "./compile.coffee table\ngit status" });
     list.push({ id: "check:level", name: "检查关卡", title: "检查关卡", cmd: "./compile.coffee level\ngit status" });
-    list.push({ id: "ota", name: "打ota并发消息", title: "打ota并发消息", optional: true, cmd: "外部打 ota 并发消息\n当前仅标记完成,不实际执行" });
+    list.push({ id: "ota", name: "打ota", title: "打ota", optional: true, cmd: "触发 Jenkins 打 ota(等构建开始拿版本号)\nbranch=beta production=true\nsyncTable=false syncLevels=false alert=true" });
+    list.push({ id: "otamsg", name: "通知到群", title: "通知到群", optional: true, cmd: "发飞书研发群:今日发版 / 是否发包 / 发版内容 / 版本号,可以smoke" });
     return list;
   },
   post: (c) => {
     const mg = c.merge || {};
     const f = mg.from || "beta", t = mg.to || "prod";
     return [
-      { id: "merge", name: "beta合并到prod", title: "beta合并到prod", cmd: `git fetch origin ${f}\ngit reset --hard origin/${f}\ngit checkout -f ${t}\ngit merge origin/${f}\ngit tag <项目>/<ota版本>\ngit push origin ${t}\ngit push origin <tag>\n已合并则跳过 merge` },
+      { id: "merge", name: "beta合并到prod", title: "beta合并到prod", cmd: `本地合并,不 push\ngit fetch origin ${f}\ngit reset --hard origin/${f}\ngit checkout -f ${t}\ngit merge origin/${f}\ngit tag <项目>/<ota版本>\n已合并则跳过 merge` },
       { id: "record", name: "填写发版记录", title: "填写发版记录", cmd: "查发版记录表是否已有该版本\n没有则写入一行" },
       { id: "notify", name: "通知完毕", title: "通知完毕", cmd: "占位\n后续接飞书机器人发群消息" },
     ];
@@ -379,7 +380,7 @@ function maybeAutoQuery() {
       <Button type="error" ghost :loading="busy.close" @click="closeFlow(flow.id)">关闭流程</Button>
     </div>
 
-    <Alert type="info" show-icon banner>发版前 / 发版后(合并、发版记录)真实执行:合并会 push 到 prod 并打 tag,发版记录真实写表,数数真实查询 jserror_new;通知为占位。</Alert>
+    <Alert type="info" show-icon banner>各步均真实执行:合并在本地打 tag(不 push),发版记录真实写表,打ota 触发 Jenkins,数数真实查询,通知真实发群。</Alert>
 
     <div class="wizard">
       <!-- 左侧 step 条 -->

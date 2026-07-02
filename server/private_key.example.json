@@ -10,6 +10,10 @@
     "webhook": "测试群自定义机器人 webhook (https://open.feishu.cn/open-apis/bot/v2/hook/xxxx)",
     "webhookSecret": "(可选)机器人签名校验密钥,没开签名就删掉这行"
   },
+  "jenkins": {
+    "baseUrl": "http://10.10.31.17:8080",
+    "otaJob": { "TP1": "Tripeaks1_OTA", "TP4": "4P_OTA" }
+  },
   "shushu": {
     "token": "数数 querySql token"
   },

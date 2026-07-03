@@ -137,7 +137,7 @@ function projectFromName(name) {
 }
 
 export async function getRelease(dateStr) {
-  if (!isConfigured()) throw new Error('feishu 未配置(private_key.json feishu.mcp_token)')
+  if (!isConfigured()) throw new Error('feishu 未配置(server_config.json feishu.mcp_token)')
   const base = dateStr ? new Date(dateStr) : new Date()
   if (isNaN(base.getTime())) throw new Error('date 格式错误')
   const { monday, sunday } = weekRange(base)

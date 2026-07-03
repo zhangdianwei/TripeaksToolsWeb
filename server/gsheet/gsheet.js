@@ -30,7 +30,7 @@ async function assertSheetExists(sheets, title) {
 }
 
 export async function fillRecord({ project, row, releaser, dryRun }) {
-  if (!isConfigured()) throw new Error('Google Sheets 凭证未配置(private_key.json 的 gsheet 段)')
+  if (!isConfigured()) throw new Error('Google Sheets 凭证未配置(server_config.json 的 gsheet 段)')
   if (!row) throw new Error('缺少 row 数据')
   const year = String(row.date || '').split('.')[0]
   if (!/^\d{4}$/.test(year)) throw new Error(`无法从日期解析年份: ${row.date}`)
@@ -51,7 +51,7 @@ export async function fillRecord({ project, row, releaser, dryRun }) {
 }
 
 export async function findRecord({ project, version, date }) {
-  if (!isConfigured()) throw new Error('Google Sheets 凭证未配置(private_key.json 的 gsheet 段)')
+  if (!isConfigured()) throw new Error('Google Sheets 凭证未配置(server_config.json 的 gsheet 段)')
   const year = String(date || '').split('.')[0]
   if (!/^\d{4}$/.test(year)) throw new Error(`无法从日期解析年份: ${date}`)
   const title = sheetName(project, year)

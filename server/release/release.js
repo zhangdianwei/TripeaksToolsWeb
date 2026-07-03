@@ -23,7 +23,7 @@ function shortErr(e) {
   return (lines[lines.length - 1] || '失败').slice(0, 140)
 }
 const COL = 'flows'
-// 仓库路径取自 private_key.json 顶层键(仓库名 → 绝对路径);分支/仓库组成按项目在此定义。
+// 仓库路径取自 server_config.json 顶层键(仓库名 → 绝对路径);分支/仓库组成按项目在此定义。
 const PROJECT_REPOS = {
   TP1: [
     { name: 'TripeaksClient', branch: 'tripeaks/beta' },
@@ -43,7 +43,7 @@ const MERGE = {
   TP4: { repo: 'TripeaksClient', from: 'tripeaks4p/beta', to: 'tripeaks4p/prod' },
 }
 const repoPath = (name) => secrets[name] || ''
-// 群机器人 webhook(private_key.json 顶层 webhook 映射)
+// 群机器人 webhook(server_config.json 顶层 webhook 映射)
 const groupUrl = (name) => (secrets.webhook || {})[name]
 const devGroupUrl = (project) => groupUrl(`${project}研发群`)
 
@@ -101,7 +101,7 @@ async function runFeishuSub(project) {
 async function runRepoSub(project, name) {
   const r = projRepos(project).find(x => x.name === name)
   if (!r) return { sub: { name, ok: false, error: '未知仓库' } }
-  if (!r.path) return { sub: { name, ok: false, error: `未配置路径(private_key.json 顶层键 "${name}")` } }
+  if (!r.path) return { sub: { name, ok: false, error: `未配置路径(server_config.json 顶层键 "${name}")` } }
   try {
     await git(r.path, ['fetch', 'origin', r.branch])
     await git(r.path, ['checkout', '-f', r.branch])

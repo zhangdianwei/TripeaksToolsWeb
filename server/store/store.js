@@ -4,7 +4,7 @@ import secrets from '../config.js'
 
 function dataDir() {
   const dir = secrets.TripeaksToolsWebData
-  if (!dir) throw new Error('未配置 TripeaksToolsWebData(server/private_key.json 顶层),无法存档')
+  if (!dir) throw new Error('未配置 TripeaksToolsWebData(server/server_config.json 顶层),无法存档')
   return dir
 }
 

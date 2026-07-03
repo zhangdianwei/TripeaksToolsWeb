@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 server/git/.cache
-server/private_key.json
+server/server_config.json
 
 # Editor directories and files
 .vscode/*

@@ -31,7 +31,7 @@ function postForm(urlStr, params) {
 
 // 执行 SQL 并解析为对象数组(供发版流程数数报错使用)
 export async function querySql(sql) {
-  if (!SHUSHU_TOKEN) throw new Error('数数 token 未配置(private_key.json 的 shushu.token)')
+  if (!SHUSHU_TOKEN) throw new Error('数数 token 未配置(server_config.json 的 shushu.token)')
   const { text } = await postForm(SHUSHU_URL, { token: SHUSHU_TOKEN, sql, format: 'json' })
   if (text.startsWith('<')) throw new Error('数数服务器错误或超时')
   const lines = text.split('\n').map(s => s.trim()).filter(Boolean)

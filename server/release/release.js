@@ -242,17 +242,19 @@ async function runRecordSub(project, operator, flow) {
 function todayDot() { const d = new Date(); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}` }
 // ============ 数数报错(真实查询 jserror_new,按 msg 分组,区分全版本/最新版本) ============
 const SHUSHU_EVENT_TABLE = { TP1: 'ta.v_event_6', TP4: 'ta.v_event_2' }
+const SHUSHU_VER_FIELD = { TP1: 'c_gameversion', TP4: 'gameversion' }
 function pad2(n) { return String(n).padStart(2, '0') }
 function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
-// 只查本次发布版本:c_gameversion 精确过滤,按 msg 分组
+// 只查本次发布版本:版本字段 LIKE 过滤(app_start 与 jserror_new 共用同一 where)
 async function queryShushu(project, version) {
   const table = SHUSHU_EVENT_TABLE[project]
-  if (!table) throw new Error(`未配置数数事件表: ${project}`)
+  const field = SHUSHU_VER_FIELD[project]
+  if (!table || !field) throw new Error(`未配置数数事件表: ${project}`)
   const v = version != null && version !== '' ? String(version) : null
   if (!v) throw new Error('未记录发布版本,无法查询')
   const now = Date.now()
   const from = ymd(new Date(now - 2 * 86400000)), to = ymd(new Date(now + 86400000))
-  const where = `WHERE "$part_date" BETWEEN '${from}' AND '${to}' AND "c_gameversion" = '${v}'`
+  const where = `WHERE "$part_date" BETWEEN '${from}' AND '${to}' AND "${field}" LIKE '%${v}%'`
   const startRows = await querySql(`SELECT count(distinct "#account_id") cnt FROM ${table} ${where} AND "#event_name" = 'app_start'`)
   const appStartUsers = Number(startRows[0]?.cnt) || 0
   const rows = await querySql(`SELECT "msg" msg, count(*) cnt FROM ${table} ${where} AND "#event_name" = 'jserror_new' GROUP BY "msg" ORDER BY cnt DESC`)

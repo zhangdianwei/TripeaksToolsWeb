@@ -320,35 +320,44 @@ function fmtRemain(ms) { const t = Math.floor(ms / 1000); return `${pad2(Math.fl
 
           <!-- 数数报错 -->
           <template v-else-if="selMajor.kind === 'shushu'">
-            <div class="muted">倒计时结束后(即使页面关闭)由服务器自动查询本次发布版本的 jserror_new,按 msg 分组。</div>
+            <div class="muted">倒计时结束后(即使页面关闭)由服务器自动查询发布版本近 2 天的 app_start 用户数和 jserror_new 报错。</div>
+
             <template v-if="majorStatus(selMajor.key) === 'pending'">
-              <div v-if="!flow.context?.releaseVersion" class="err">未记录发布版本(请先完成打 ota),无法查询数数。</div>
-              <template v-else>
-                <div class="frow" style="max-width:280px;margin-top:8px">
-                  <label>倒计时</label>
-                  <Select v-model="shushuMinutes" transfer style="flex:1"><Option v-for="x in SHUSHU_MINUTES" :key="x" :value="x">{{ x }} 分钟</Option></Select>
-                </div>
-                <Button type="primary" :loading="busy.op" @click="shushuStart(selMajor)">启动倒计时</Button>
-              </template>
+              <div v-if="!flow.context?.releaseVersion" class="err" style="margin-top:12px">未记录发布版本(请先完成打 ota),无法查询数数。</div>
+              <div v-else class="frow" style="max-width:340px;margin-top:14px">
+                <label>倒计时</label>
+                <Select v-model="shushuMinutes" transfer style="flex:1"><Option v-for="x in SHUSHU_MINUTES" :key="x" :value="x">{{ x }} 分钟</Option></Select>
+                <Button type="primary" :loading="busy.op" @click="shushuStart(selMajor)">启动</Button>
+              </div>
             </template>
-            <template v-else-if="majorStatus(selMajor.key) === 'running'">
+
+            <div v-else-if="majorStatus(selMajor.key) === 'running'" class="countdown-box">
               <div class="countdown">{{ fmtRemain(remainMs(st(selMajor.key))) }}</div>
-              <div v-if="remainMs(st(selMajor.key)) === 0" class="muted" style="margin-bottom:8px">已到点,服务器将自动查询(或点立即查询)</div>
-              <Button :loading="busy.op" @click="shushuQuery(selMajor)">立即查询</Button>
+              <div class="muted">{{ remainMs(st(selMajor.key)) === 0 ? '已到点,服务器将自动查询…' : '倒计时结束后自动查询' }}</div>
+              <Button style="margin-top:10px" :loading="busy.op" @click="shushuQuery(selMajor)">立即查询</Button>
+            </div>
+
+            <template v-else-if="st(selMajor.key).error">
+              <div class="err" style="margin-top:12px">查询出错:{{ st(selMajor.key).error }}</div>
+              <Button style="margin-top:10px" :loading="busy.op" @click="shushuQuery(selMajor)">重试</Button>
             </template>
+
             <template v-else>
-              <div v-if="st(selMajor.key).error" class="err">查询出错(已标记完成):{{ st(selMajor.key).error }}
+              <div class="shushu-metrics">
+                <div class="metric">
+                  <div class="metric-label">app_start 触发用户数</div>
+                  <div class="metric-val">{{ st(selMajor.key).result?.appStartUsers ?? '—' }}<span class="metric-unit"> 人</span></div>
+                </div>
+                <div class="metric">
+                  <div class="metric-label">jserror_new 报错</div>
+                  <div class="metric-val" :class="{ 'metric-err': st(selMajor.key).result?.total }">{{ st(selMajor.key).result?.total || 0 }}<span class="metric-unit"> 条</span></div>
+                </div>
+              </div>
+              <div class="muted small">版本 {{ st(selMajor.key).result?.version }} · 近 {{ st(selMajor.key).result?.days }} 天 · 查询于 {{ fmtTime(st(selMajor.key).result?.queriedAt) }}
                 <Button size="small" style="margin-left:8px" :loading="busy.op" @click="shushuQuery(selMajor)">重新查询</Button>
               </div>
-              <template v-else>
-                <div class="muted">版本 {{ st(selMajor.key).result?.version || '—' }} · 近 {{ st(selMajor.key).result?.days }} 天 · app_start 触发用户数 {{ st(selMajor.key).result?.appStartUsers ?? '—' }} 人 · 查询于 {{ fmtTime(st(selMajor.key).result?.queriedAt) }}
-                  <Button size="small" style="margin-left:8px" :loading="busy.op" @click="shushuQuery(selMajor)">重新查询</Button>
-                </div>
-                <div style="margin-top:10px">
-                  <Tag :color="(st(selMajor.key).result?.total || 0) ? 'error' : 'success'">{{ (st(selMajor.key).result?.total || 0) ? `${st(selMajor.key).result.total} 条报错` : '无报错' }}</Tag>
-                </div>
-                <Table v-if="st(selMajor.key).result?.groups?.length" :columns="shushuCols" :data="st(selMajor.key).result.groups" border size="small" style="margin:6px 0" />
-              </template>
+              <Table v-if="st(selMajor.key).result?.groups?.length" :columns="shushuCols" :data="st(selMajor.key).result.groups" border size="small" style="margin-top:10px" />
+              <div v-else class="muted" style="margin-top:10px">🎉 无报错</div>
             </template>
           </template>
         </Card>
@@ -391,6 +400,14 @@ function fmtRemain(ms) { const t = Math.floor(ms / 1000); return `${pad2(Math.fl
 .err { color: #ed4014; }
 .result { margin-top: 8px; }
 .multiline { white-space: pre-line; padding: 4px 0; }
-.countdown { font-size: 32px; font-weight: 600; margin: 12px 0; font-variant-numeric: tabular-nums; }
+.countdown-box { margin-top: 12px; }
+.countdown { font-size: 32px; font-weight: 600; margin: 12px 0 4px; font-variant-numeric: tabular-nums; }
+.small { font-size: 12px; }
+.shushu-metrics { display: flex; gap: 16px; margin: 14px 0 10px; }
+.metric { flex: 1; padding: 12px 16px; background: #f8f9fb; border-radius: 6px; }
+.metric-label { color: #808695; font-size: 13px; }
+.metric-val { font-size: 26px; font-weight: 600; margin-top: 4px; }
+.metric-val.metric-err { color: #ed4014; }
+.metric-unit { font-size: 14px; font-weight: 400; color: #808695; }
 .log { background: #f7f7f7; padding: 8px; margin-top: 8px; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
 </style>

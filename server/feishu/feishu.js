@@ -30,12 +30,13 @@ async function postWebhook(url, body) {
   return j
 }
 // 朴素卡片:标题栏(template)+ 正文 body;body 为数组时每段一个 div,段间用分割线
+// body 项为字符串 → lark_md 文本 div;为对象 → 原样作为卡片元素(如自定义 fields 表格)
 export function sendBotCard(url, { title, template = 'blue', body }) {
   const bodies = Array.isArray(body) ? body : (body ? [body] : [])
   const elements = []
   bodies.forEach(b => {
     if (elements.length) elements.push({ tag: 'hr' })
-    elements.push({ tag: 'div', text: { tag: 'lark_md', content: b } })
+    elements.push(typeof b === 'object' ? b : { tag: 'div', text: { tag: 'lark_md', content: b } })
   })
   const card = {
     config: { wide_screen_mode: true },

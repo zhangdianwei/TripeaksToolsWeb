@@ -30,9 +30,11 @@ const operator = ref(RELEASERS[0]);
 const busy = reactive({});
 const ready = ref(false);
 const sel = ref("");
-const shushuMinutes = ref(20);
 const nowMs = ref(Date.now());
 let tick = null;
+
+// 数数报错查询:内嵌流程,项目/版本取自流程;立即→/api/release/jserror-report,延时→/api/schedule
+const sh = reactive({ minutes: 30, notify: true, last: null });
 
 function condMet(when) { return when === "needPackage" ? !!flow.value?.context?.needPackage : true; }
 const majors = computed(() => (FLOWS[flow.value?.flowType] || FLOWS.regular).filter(m => !m.when || condMet(m.when)));
@@ -102,13 +104,6 @@ const subRows = computed(() => curSubs.value.map(s => {
     fail: r ? !r.ok : false,
   };
 }));
-const shushuCols = [
-  { title: "错误信息(msg)", key: "msg", minWidth: 240, tooltip: true },
-  { title: "次数", key: "count", width: 80 },
-];
-
-function pad2(n) { return String(n).padStart(2, "0"); }
-function fmtTime(s) { return s ? s.replace("T", " ").slice(0, 19) : ""; }
 
 async function getJson(url) {
   const r = await fetch(url); const t = await r.text();
@@ -160,7 +155,6 @@ onUnmounted(() => { if (tick) clearInterval(tick); });
 
 // ============ 大流程操作 ============
 function setFlow(f) { flow.value = f; }
-async function op(name, body) { setFlow(await postJson(`/api/release/flows/${flow.value.id}/${name}`, { ...body, operator: operator.value })); }
 
 // 完成最后一个大流程时结束整个流程(不再自动跳转到下一步)
 async function afterDone(key) {
@@ -168,9 +162,6 @@ async function afterDone(key) {
   if (majors.value[i + 1]) return;
   setFlow(await postJson(`/api/release/flows/${flow.value.id}/done`, { operator: operator.value }));
   Message.success("流程已完成");
-}
-async function runOp(m, fn) {
-  await run("op", async () => { await fn(); if (majorStatus(m.key) === "done") await afterDone(m.key); });
 }
 
 // 批处理:依次跑勾选的子流程;跳过已完成的(支持继续);暂停只拦未开始的,进行中的跑完。
@@ -206,8 +197,22 @@ async function completeExternal(m) {
     await afterDone(m.key);
   });
 }
-async function shushuStart(m) { await run("op", () => op("shushu/start", { stepKey: m.key, minutes: shushuMinutes.value })); }
-async function shushuQuery(m) { await runOp(m, () => op("shushu/query", { stepKey: m.key })); }
+async function shushuSubmit(m) {
+  const version = flow.value?.context?.releaseVersion;
+  if (!version) { Message.warning("未记录发布版本(请先完成打 ota)"); return; }
+  await run("shushu", async () => {
+    const params = { project: flow.value.project, version: String(version), notify: sh.notify };
+    if (sh.minutes > 0) {
+      await postJson("/api/schedule", { delayMs: sh.minutes * 60000, module: "release", action: "query_jserror_report", params, createdBy: operator.value });
+      Message.success(`已启动倒计时,${sh.minutes} 分钟后自动查询(流程结束后仍继续,可在【后台任务】查看/取消)`);
+    } else {
+      sh.last = await postJson("/api/release/jserror-report", params);
+      Message.success("查询完成" + (sh.notify ? ",已通知群" : ""));
+    }
+    setFlow(await postJson(`/api/release/flows/${flow.value.id}/step`, { stepKey: m.key, status: "done", operator: operator.value }));
+    await afterDone(m.key);
+  });
+}
 function closeFlow(id) {
   if (flow.value?.status === "done") { flow.value = null; return; } // 已跑完,直接关闭
   Modal.confirm({
@@ -215,10 +220,6 @@ function closeFlow(id) {
     onOk: () => run("close", async () => { await postJson(`/api/release/flows/${id}/abort`, { operator: operator.value }); await loadActive(); }),
   });
 }
-
-// ============ 数数倒计时(前端只显示,查询由服务器 sweep 触发) ============
-function remainMs(s) { return s.countdownEndAt ? Math.max(0, Date.parse(s.countdownEndAt) - nowMs.value) : 0; }
-function fmtRemain(ms) { const t = Math.floor(ms / 1000); return `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`; }
 </script>
 
 <template>
@@ -318,48 +319,26 @@ function fmtRemain(ms) { const t = Math.floor(ms / 1000); return `${pad2(Math.fl
             <Tag v-else color="success">已完成</Tag>
           </template>
 
-          <!-- 数数报错 -->
+          <!-- 数数报错:立即查询,或启动倒计时(倒计时为独立后台任务,流程结束后仍继续) -->
           <template v-else-if="selMajor.kind === 'shushu'">
-            <div class="muted">倒计时结束后(即使页面关闭)由服务器自动查询发布版本近 2 天的 app_start 用户数和 jserror_new 报错。</div>
-
-            <template v-if="majorStatus(selMajor.key) === 'pending'">
-              <div v-if="!flow.context?.releaseVersion" class="err" style="margin-top:12px">未记录发布版本(请先完成打 ota),无法查询数数。</div>
-              <div v-else class="frow" style="max-width:340px;margin-top:14px">
-                <label>倒计时</label>
-                <Select v-model="shushuMinutes" transfer style="flex:1"><Option v-for="x in SHUSHU_MINUTES" :key="x" :value="x">{{ x }} 分钟</Option></Select>
-                <Button type="primary" :loading="busy.op" @click="shushuStart(selMajor)">启动</Button>
-              </div>
-            </template>
-
-            <div v-else-if="majorStatus(selMajor.key) === 'running'" class="countdown-box">
-              <div class="countdown">{{ fmtRemain(remainMs(st(selMajor.key))) }}</div>
-              <div class="muted">{{ remainMs(st(selMajor.key)) === 0 ? '已到点,服务器将自动查询…' : '倒计时结束后自动查询' }}</div>
-              <Button style="margin-top:10px" :loading="busy.op" @click="shushuQuery(selMajor)">立即查询</Button>
-            </div>
-
-            <template v-else-if="st(selMajor.key).error">
-              <div class="err" style="margin-top:12px">查询出错:{{ st(selMajor.key).error }}</div>
-              <Button style="margin-top:10px" :loading="busy.op" @click="shushuQuery(selMajor)">重试</Button>
-            </template>
-
+            <div v-if="!flow.context?.releaseVersion" class="err">未记录发布版本(请先完成打 ota),无法查询数数。</div>
             <template v-else>
-              <div class="shushu-metrics">
-                <div class="metric">
-                  <div class="metric-label">app_start 触发用户数</div>
-                  <div class="metric-val">{{ st(selMajor.key).result?.appStartUsers ?? '—' }}<span class="metric-unit"> 人</span></div>
-                </div>
-                <div class="metric">
-                  <div class="metric-label">jserror_new 报错</div>
-                  <div class="metric-val" :class="{ 'metric-err': st(selMajor.key).result?.total }">{{ st(selMajor.key).result?.total || 0 }}<span class="metric-unit"> 条</span></div>
-                </div>
+              <div class="muted">项目 {{ flow.project }} · 版本 {{ flow.context.releaseVersion }}</div>
+              <div class="frow" style="max-width:340px;margin-top:14px">
+                <label>时机</label>
+                <Select v-model="sh.minutes" transfer style="flex:1">
+                  <Option :value="0">立即查询</Option>
+                  <Option v-for="x in SHUSHU_MINUTES" :key="x" :value="x">{{ x }} 分钟后</Option>
+                </Select>
               </div>
-              <div class="muted small">版本 {{ st(selMajor.key).result?.version }} · 近 {{ st(selMajor.key).result?.days }} 天 · 查询于 {{ fmtTime(st(selMajor.key).result?.queriedAt) }}
-                <Button size="small" style="margin-left:8px" :loading="busy.op" @click="shushuQuery(selMajor)">重新查询</Button>
-              </div>
-              <Table v-if="st(selMajor.key).result?.groups?.length" :columns="shushuCols" :data="st(selMajor.key).result.groups" border size="small" style="margin-top:10px" />
-              <div v-else class="muted" style="margin-top:10px">🎉 无报错</div>
+              <div class="frow"><Checkbox v-model="sh.notify">查询后通知客户端群</Checkbox></div>
+              <Button type="primary" :loading="busy.shushu" @click="shushuSubmit(selMajor)">{{ sh.minutes ? `启动倒计时(${sh.minutes} 分钟后)` : '立即查询' }}</Button>
+              <Tag v-if="majorStatus(selMajor.key) === 'done'" color="success" style="margin-left:8px">已完成</Tag>
+              <div v-if="sh.minutes" class="muted" style="margin-top:8px">倒计时是独立后台任务,发版流程结束后仍会继续,可在【后台任务】页查看或取消。</div>
+              <div v-if="sh.last" class="muted" style="margin-top:10px">✅ {{ sh.last.version }} · app_start {{ sh.last.appStartUsers }} 人 · 报错 {{ sh.last.total }} 条{{ sh.notify ? ' · 已通知群' : '' }}</div>
             </template>
           </template>
+
         </Card>
       </div>
     </div>
@@ -400,14 +379,5 @@ function fmtRemain(ms) { const t = Math.floor(ms / 1000); return `${pad2(Math.fl
 .err { color: #ed4014; }
 .result { margin-top: 8px; }
 .multiline { white-space: pre-line; padding: 4px 0; }
-.countdown-box { margin-top: 12px; }
-.countdown { font-size: 32px; font-weight: 600; margin: 12px 0 4px; font-variant-numeric: tabular-nums; }
-.small { font-size: 12px; }
-.shushu-metrics { display: flex; gap: 16px; margin: 14px 0 10px; }
-.metric { flex: 1; padding: 12px 16px; background: #f8f9fb; border-radius: 6px; }
-.metric-label { color: #808695; font-size: 13px; }
-.metric-val { font-size: 26px; font-weight: 600; margin-top: 4px; }
-.metric-val.metric-err { color: #ed4014; }
-.metric-unit { font-size: 14px; font-weight: 400; color: #808695; }
 .log { background: #f7f7f7; padding: 8px; margin-top: 8px; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
 </style>

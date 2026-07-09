@@ -1,6 +1,6 @@
 <script setup>
 
-import { ref, reactive, computed } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 
 import BingoTest from "./components/BingoTest.vue";
 import ScavengeMap from "./components/ScavengeMap.vue";
@@ -10,21 +10,39 @@ import DogRun from "./components/DogRun.vue";
 import BuriedBounty from "./components/BuriedBounty.vue";
 import PlayableAds from "./components/PlayableAds.vue";
 import ReleaseFlow from "./components/ReleaseFlow.vue";
+import BackgroundTasks from "./components/BackgroundTasks.vue";
 
 const PageConfigs = [
-  // { name: "BingoTest", comp: BingoTest },
-  // { name: "ScavengeMap", comp: ScavengeMap },
-  // { name: "MonsterMazeMap", comp: MonsterMazeMap },
   { name: "小狗快跑地图编辑器", comp: DogRun },
   { name: "敲格子UI编辑器", comp: BuriedBounty },
   { name: "PlayableAds", comp: PlayableAds },
+  { name: "后台任务", comp: BackgroundTasks },
   { name: "数数（程序版）", comp: EasyShushu },
   { name: "发版流程", comp: ReleaseFlow },
 ];
 
 const PageNames = computed(() => PageConfigs.map((x) => x.name));
-const selectedPageName = ref(PageNames.value[PageNames.value.length - 1]);
+const routeKey = (x) => x.comp.__name || x.comp.name || x.name;
+function pageFromHash() {
+  const k = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+  return PageConfigs.find((x) => routeKey(x) === k || x.name === k);
+}
+const selectedPageName = ref((pageFromHash() || PageConfigs[PageConfigs.length - 1]).name);
 const selectedPage = computed(() => PageConfigs.find((x) => x.name == selectedPageName.value));
+
+watch(selectedPageName, (n) => {
+  const p = PageConfigs.find((x) => x.name === n);
+  if (p) location.hash = routeKey(p);
+});
+function onHashChange() {
+  const p = pageFromHash();
+  if (p) selectedPageName.value = p.name;
+}
+onMounted(() => {
+  window.addEventListener("hashchange", onHashChange);
+  if (selectedPage.value) location.hash = routeKey(selectedPage.value);
+});
+onUnmounted(() => window.removeEventListener("hashchange", onHashChange));
 </script>
 
 <template>

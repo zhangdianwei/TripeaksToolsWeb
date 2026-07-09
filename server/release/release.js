@@ -7,6 +7,7 @@ import { getRelease, sendBotCard } from '../feishu/feishu.js'
 import { querySql } from '../shushu/shushu.js'
 import { triggerOta } from '../jenkins/jenkins.js'
 import { fillRecord, findRecord } from '../gsheet/gsheet.js'
+import { register } from '../schedule/registry.js'
 
 // 说明:常规发版各步(发版前/推送/发版后/数数/通知)均真实执行;热更流程的 merge/record 仍为 mock。
 const exec = promisify(execFile)
@@ -57,9 +58,27 @@ function releaseCard(project, { versionName, needPackage, stories, releaseVersio
 function doneCard(project, version) {
   return { title: `${project} · 发版完毕`, template: 'green', body: `客户端发版完毕\n版本：**${version || '—'}**` }
 }
+// jserror_new 的 msg → 数量,做成飞书卡片双列表格(is_short 两列)
+function msgTable(groups) {
+  const top = groups.slice(0, 30)
+  const fields = [
+    { is_short: true, text: { tag: 'lark_md', content: '**msg**' } },
+    { is_short: true, text: { tag: 'lark_md', content: '**数量**' } },
+  ]
+  for (const g of top) {
+    fields.push({ is_short: true, text: { tag: 'plain_text', content: g.msg } })
+    fields.push({ is_short: true, text: { tag: 'plain_text', content: String(g.count) } })
+  }
+  return { tag: 'div', fields }
+}
 function shushuCard(project, r) {
   const md = `app_start 触发用户数 ${r.appStartUsers} 人\njserror_new 数量 ${r.total ? RED(r.total) : 0}`
-  return { title: `${r.version} 报错情况`, template: r.total ? 'red' : 'green', body: md }
+  const body = [md]
+  if (r.groups?.length) {
+    body.push(msgTable(r.groups))
+    if (r.groups.length > 30) body.push(`仅显示报错数前 30 条,共 ${r.groups.length} 条`)
+  }
+  return { title: `${r.version} 报错情况`, template: r.total ? 'red' : 'green', body }
 }
 const projRepos = (p) => (PROJECT_REPOS[p] || []).map(r => ({ ...r, path: repoPath(r.name) }))
 const projMerge = (p) => { const m = MERGE[p]; return m ? { ...m, repo: repoPath(m.repo) } : null }
@@ -265,6 +284,13 @@ async function queryShushu(project, version) {
 function notifyShushu(project, result) {
   return sendBotCard(groupUrl('客户端群'), shushuCard(project, result)).catch(() => {})
 }
+// 原子能力:查询数数报错 + 可选发群;注册给通用调度器,供"倒计时到点自动执行"复用。
+async function queryJserrorReport({ project, version, notify = true }) {
+  const r = await queryShushu(project, version)
+  if (notify) await notifyShushu(project, r)
+  return r
+}
+register('release', 'query_jserror_report', queryJserrorReport)
 
 // 通知完毕:发"客户端发版完毕"到项目研发群
 async function runNotifySub(flow) {
@@ -389,56 +415,11 @@ router.post('/flows/:id/post/sub', wrap(async (req, res) => {
   out.ms = Date.now() - t0
   res.json(await saveSub(req.params.id, stepKey, out, ctx, operator))
 }))
-// 数数:启动倒计时(记录截止时间) + 倒计时结束后真实查询
-router.post('/flows/:id/shushu/start', wrap(async (req, res) => {
-  getFlow(req.params.id)
-  const { stepKey, operator, minutes } = req.body || {}
-  const mins = Number(minutes) || 20
-  const endAt = new Date(Date.now() + mins * 60000).toISOString()
-  res.json(await patchStep(req.params.id, stepKey, (f, s) => {
-    s.status = 'running'; s.minutes = mins; s.countdownEndAt = endAt; s.result = null
-  }, operator, `数数倒计时 ${mins}min`))
+// 数数报错:立即查询(+可选发群)。延时查询由前端排到通用调度器 /api/schedule。
+router.post('/jserror-report', wrap(async (req, res) => {
+  const { project, version, notify = true } = req.body || {}
+  if (!project) throw new Error('缺少 project')
+  res.json(await queryJserrorReport({ project, version, notify }))
 }))
-
-router.post('/flows/:id/shushu/query', wrap(async (req, res) => {
-  const flow = getFlow(req.params.id)
-  const { stepKey, operator } = req.body || {}
-  let result, errMsg
-  try {
-    result = await queryShushu(flow.project, flow.context?.releaseVersion)
-  } catch (e) { errMsg = shortErr(e) }
-  if (result) await notifyShushu(flow.project, result)
-  res.json(await patchStep(req.params.id, stepKey, (f, s) => {
-    s.status = 'done'; s.doneBy = operator || ''; s.doneAt = nowIso(); delete s.mock
-    if (errMsg) { s.error = errMsg; s.result = null } else { s.result = result; delete s.error }
-  }, operator, errMsg ? '数数查询(出错,已标记完成)' : '数数查询'))
-}))
-
-// 服务器端定时扫描:到点的数数倒计时(即使前端没打开)也会自动查询
-let sweeping = false
-async function sweepShushu() {
-  if (sweeping) return
-  sweeping = true
-  try {
-    const now = Date.now()
-    for (const f of store.list(COL)) {
-      if (f.status !== 'active') continue
-      for (const [key, s] of Object.entries(f.steps || {})) {
-        // 前端不再自动查询,数数查询/通知统一由 sweep 触发(单一来源,不会双通知)
-        if (s.status !== 'running' || !s.countdownEndAt || s.result || Date.parse(s.countdownEndAt) > now) continue
-        try {
-          const result = await queryShushu(f.project, f.context?.releaseVersion)
-          await notifyShushu(f.project, result)
-          await patchStep(f.id, key, (ff, ss) => { ss.status = 'done'; ss.doneAt = nowIso(); ss.doneBy = 'system'; ss.result = result; delete ss.mock }, 'system', '数数查询(自动)')
-        } catch (e) {
-          await patchStep(f.id, key, (ff, ss) => { ss.status = 'done'; ss.doneAt = nowIso(); ss.doneBy = 'system'; ss.error = shortErr(e); ss.result = null }, 'system', '数数查询(自动,出错)').catch(() => {})
-        }
-      }
-    }
-  } finally { sweeping = false }
-}
-setInterval(() => { sweepShushu().catch(() => {}) }, 60000)
-
-// 启动时:运行中的数数倒计时进程已不存在影响,这里无需 sweep(纯倒计时由前端依据 countdownEndAt 计算)
 
 export default router

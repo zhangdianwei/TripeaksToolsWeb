@@ -218,7 +218,7 @@ async function runCheckVersionSub(flow) {
     return { sub: { name, ok: true, result: `一致:${cur}` } }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }
-// beta合并到prod:对齐 prod → merge origin/beta → 打 tag(用发布版本),不 push
+// beta合并到prod:对齐 prod → merge origin/beta → 打 tag(用发布版本)→ push 分支和 tag
 async function runMergeSub(project, releaseVersion) {
   const name = 'beta合并到prod'
   const m = MERGE[project]; const cwd = repoPath('TripeaksClient')
@@ -232,8 +232,10 @@ async function runMergeSub(project, releaseVersion) {
     const tagExists = !!(await git(cwd, ['tag', '-l', tag]).catch(() => ''))
     if (!merged) await git(cwd, ['merge', '--no-edit', `origin/${m.from}`])
     if (!tagExists) await git(cwd, ['tag', tag])
+    if (!merged) await git(cwd, ['push', 'origin', m.to])
+    if (!tagExists) await git(cwd, ['push', 'origin', tag])
     const head = await git(cwd, ['rev-parse', '--short', m.to])
-    return { sub: { name, ok: true, result: `${merged ? `prod 已含 ${m.from}` : `已合并 ${m.from} 到 ${m.to}`} (${head}),tag ${tag}(本地,未 push)` } }
+    return { sub: { name, ok: true, result: `${merged ? `prod 已含 ${m.from}` : `已合并 ${m.from} 到 ${m.to}`} (${head}),tag ${tag}(已 push)` } }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }
 // 发版记录:precheck 查表是否已有该版本行,否则真实写入(含 Resources commit)

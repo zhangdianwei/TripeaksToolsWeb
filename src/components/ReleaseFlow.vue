@@ -34,7 +34,13 @@ const nowMs = ref(Date.now());
 let tick = null;
 
 // 数数报错查询:内嵌流程,项目/版本取自流程;立即→/api/release/jserror-report,延时→/api/schedule
-const sh = reactive({ minutes: 30, notify: true, last: null });
+const sh = reactive({ minutes: 30, notify: true, last: null, deadline: 0, schedId: "" });
+const shCountdown = computed(() => {
+  const left = sh.deadline - nowMs.value;
+  if (left <= 0) return "";
+  const s = Math.floor(left / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+});
 
 function condMet(when) { return when === "needPackage" ? !!flow.value?.context?.needPackage : true; }
 const majors = computed(() => (FLOWS[flow.value?.flowType] || FLOWS.regular).filter(m => !m.when || condMet(m.when)));
@@ -144,6 +150,7 @@ async function enterFlow(id) {
   flow.value = f;
   const ms = (FLOWS[f.flowType] || []).find(m => (f.steps[m.key]?.status || "pending") !== "done");
   sel.value = (ms || (FLOWS[f.flowType] || [])[0])?.key || "";
+  await restoreShushu();
 }
 
 onMounted(async () => {
@@ -203,8 +210,8 @@ async function shushuSubmit(m) {
   await run("shushu", async () => {
     const params = { project: flow.value.project, version: String(version), notify: sh.notify };
     if (sh.minutes > 0) {
-      await postJson("/api/schedule", { delayMs: sh.minutes * 60000, module: "release", action: "query_jserror_report", params, createdBy: operator.value });
-      Message.success(`已启动倒计时,${sh.minutes} 分钟后自动查询(流程结束后仍继续,可在【后台任务】查看/取消)`);
+      const t = await postJson("/api/schedule", { delayMs: sh.minutes * 60000, module: "release", action: "query_jserror_report", params, createdBy: operator.value });
+      sh.deadline = Date.parse(t.dueAt); sh.schedId = t.id;
     } else {
       sh.last = await postJson("/api/release/jserror-report", params);
       Message.success("查询完成" + (sh.notify ? ",已通知群" : ""));
@@ -212,6 +219,18 @@ async function shushuSubmit(m) {
     setFlow(await postJson(`/api/release/flows/${flow.value.id}/step`, { stepKey: m.key, status: "done", operator: operator.value }));
     await afterDone(m.key);
   });
+}
+async function shushuCancel() {
+  if (sh.schedId) await fetch(`/api/schedule/${sh.schedId}`, { method: "DELETE" }).catch(() => {});
+  sh.deadline = 0; sh.schedId = "";
+}
+async function restoreShushu() {
+  sh.deadline = 0; sh.schedId = "";
+  const ver = flow.value?.context?.releaseVersion;
+  if (!ver) return;
+  const list = (await getJson("/api/schedule?status=pending&action=query_jserror_report").catch(() => ({}))).tasks || [];
+  const t = list.find(x => x.params?.project === flow.value.project && String(x.params?.version) === String(ver));
+  if (t) { sh.deadline = Date.parse(t.dueAt); sh.schedId = t.id; sh.notify = !!t.params?.notify; }
 }
 function closeFlow(id) {
   if (flow.value?.status === "done") { flow.value = null; return; } // 已跑完,直接关闭
@@ -323,19 +342,27 @@ function closeFlow(id) {
           <template v-else-if="selMajor.kind === 'shushu'">
             <div v-if="!flow.context?.releaseVersion" class="err">未记录发布版本(请先完成打 ota),无法查询数数。</div>
             <template v-else>
-              <div class="muted">项目 {{ flow.project }} · 版本 {{ flow.context.releaseVersion }}</div>
-              <div class="frow" style="max-width:340px;margin-top:14px">
-                <label>时机</label>
-                <Select v-model="sh.minutes" transfer style="flex:1">
-                  <Option :value="0">立即查询</Option>
-                  <Option v-for="x in SHUSHU_MINUTES" :key="x" :value="x">{{ x }} 分钟后</Option>
-                </Select>
-              </div>
-              <div class="frow"><Checkbox v-model="sh.notify">查询后通知客户端群</Checkbox></div>
-              <Button type="primary" :loading="busy.shushu" @click="shushuSubmit(selMajor)">{{ sh.minutes ? `启动倒计时(${sh.minutes} 分钟后)` : '立即查询' }}</Button>
-              <Tag v-if="majorStatus(selMajor.key) === 'done'" color="success" style="margin-left:8px">已完成</Tag>
-              <div v-if="sh.minutes" class="muted" style="margin-top:8px">倒计时是独立后台任务,发版流程结束后仍会继续,可在【后台任务】页查看或取消。</div>
-              <div v-if="sh.last" class="muted" style="margin-top:10px">✅ {{ sh.last.version }} · app_start {{ sh.last.appStartUsers }} 人 · 报错 {{ sh.last.total }} 条{{ sh.notify ? ' · 已通知群' : '' }}</div>
+              <template v-if="shCountdown">
+                <div class="frow"><label>倒计时</label><span class="relver">{{ shCountdown }}</span></div>
+                <div class="frow"><label>通知</label><span>{{ sh.notify ? '查询后通知客户端群' : '不通知' }}</span></div>
+                <div class="frow"><Button @click="shushuCancel">取消倒计时</Button></div>
+                <div class="muted">倒计时是独立后台任务,发版流程结束后仍会继续,可在【后台任务】页查看或取消。</div>
+              </template>
+              <template v-else>
+                <div class="frow">
+                  <label>时机</label>
+                  <Select v-model="sh.minutes" transfer style="width:220px">
+                    <Option :value="0">立即查询</Option>
+                    <Option v-for="x in SHUSHU_MINUTES" :key="x" :value="x">{{ x }} 分钟后</Option>
+                  </Select>
+                </div>
+                <div class="frow"><label>通知</label><Checkbox v-model="sh.notify" style="white-space:nowrap">查询后通知客户端群</Checkbox></div>
+                <div class="frow">
+                  <Button type="primary" :loading="busy.shushu" @click="shushuSubmit(selMajor)">{{ sh.minutes ? `启动倒计时(${sh.minutes} 分钟后)` : '立即查询' }}</Button>
+                  <Tag v-if="majorStatus(selMajor.key) === 'done'" color="success">已完成</Tag>
+                </div>
+                <div v-if="sh.last" class="muted">✅ {{ sh.last.version }} · app_start {{ sh.last.appStartUsers }} 人 · 报错 {{ sh.last.total }} 条{{ sh.notify ? ' · 已通知群' : '' }}</div>
+              </template>
             </template>
           </template>
 

@@ -17,8 +17,8 @@ const PageConfigs = [
   { name: "敲格子UI编辑器", comp: BuriedBounty },
   { name: "PlayableAds", comp: PlayableAds },
   { name: "后台任务", comp: BackgroundTasks },
-  { name: "数数（程序版）", comp: EasyShushu },
   { name: "发版流程", comp: ReleaseFlow },
+  { name: "数数（程序版）", comp: EasyShushu },
 ];
 
 const PageNames = computed(() => PageConfigs.map((x) => x.name));

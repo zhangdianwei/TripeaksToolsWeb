@@ -315,11 +315,15 @@ const eventQuerySql = computed(() => {
   const conds = [];
   if (groups.account_id.length) {
     const ids = groups.account_id.map(sqlStr).join(',');
-    conds.push(`("#account_id" IN (${ids}) OR "c_userid" IN (${ids}))`);
+    conds.push(project.hasAliasIdCols
+      ? `("#account_id" IN (${ids}) OR "c_userid" IN (${ids}))`
+      : `"#account_id" IN (${ids})`);
   }
   if (groups.distinct_id.length) {
     const ids = groups.distinct_id.map(sqlStr).join(',');
-    conds.push(`("#distinct_id" IN (${ids}) OR "c_clientid" IN (${ids}))`);
+    conds.push(project.hasAliasIdCols
+      ? `("#distinct_id" IN (${ids}) OR "c_clientid" IN (${ids}))`
+      : `"#distinct_id" IN (${ids})`);
   }
   if (groups.user_id.length) conds.push(`"#user_id" IN (${groups.user_id.join(',')})`);
   if (!conds.length) return '-- 请输入至少一个 id';

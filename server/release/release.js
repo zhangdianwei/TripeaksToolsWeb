@@ -230,7 +230,7 @@ async function runMergeSub(project, releaseVersion) {
     const tag = `${project.toLowerCase()}/${releaseVersion}`
     const merged = await isAncestor(cwd, `origin/${m.from}`, m.to)
     const tagExists = !!(await git(cwd, ['tag', '-l', tag]).catch(() => ''))
-    if (!merged) await git(cwd, ['merge', '--no-edit', `origin/${m.from}`])
+    if (!merged) await git(cwd, ['merge', '--no-edit', '--no-ff', `origin/${m.from}`])
     if (!tagExists) await git(cwd, ['tag', tag])
     if (!merged) await git(cwd, ['push', 'origin', m.to])
     if (!tagExists) await git(cwd, ['push', 'origin', tag])

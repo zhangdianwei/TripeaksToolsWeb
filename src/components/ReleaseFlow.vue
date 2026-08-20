@@ -84,7 +84,7 @@ const SUB_PLANS = {
     return [
       { id: "updateclient", name: "更新TripeaksClient", title: "更新TripeaksClient", optional: true, cmd: `对齐到最新 ${f}\ngit fetch/checkout -f/reset --hard/clean/submodule\ngit log -1` },
       { id: "checkversion", name: "检查版本号一致性", title: "检查版本号一致性", optional: true, cmd: `grep client ${f} 的 production 版本号\n与发布版本比对,不一致则失败(暂停)` },
-      { id: "merge", name: "beta合并到prod", title: "beta合并到prod", optional: true, cmd: `对齐 ${t} → merge origin/${f} → 打 tag <项目>/<发布版本>(不 push)\n已合并则跳过` },
+      { id: "merge", name: "beta合并到prod", title: "beta合并到prod", optional: true, cmd: `对齐 ${t} → merge --no-ff origin/${f}(强制留合并提交) → 打 tag <项目>/<发布版本>\n已合并则跳过` },
       { id: "record", name: "填写发版记录", title: "填写发版记录", optional: true, cmd: "查发版记录表是否已有该版本;没有则写入一行(含 ResourcesCommit)" },
       { id: "notify", name: "通知发版完毕", title: "通知发版完毕", optional: true, cmd: "发飞书研发群:客户端发版完毕 + 版本号" },
     ];

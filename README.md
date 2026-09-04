@@ -37,7 +37,6 @@
 
 `server/server_config.json` 顶层的 `TripeaksClient` 配置源码绝对路径。服务启动后可通过 HTTP 读取：
 
-* AI 工具接入说明：`http://10.10.31.17:9090/readtp.txt`
 * 接口说明：`GET /api/tpsource`
 * 列出目录：`GET /api/tpsource/list?path=js`
 * 读取文件：`GET /api/tpsource/read?path=js/main.js`

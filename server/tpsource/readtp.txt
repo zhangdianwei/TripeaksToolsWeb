@@ -1,0 +1,37 @@
+TripeaksClient 源码读取说明
+
+你可以通过以下无鉴权 HTTP 接口读取 TripeaksClient 源码：
+
+服务地址：http://10.10.31.17:9090
+接口说明：GET /api/tpsource
+列出目录：GET /api/tpsource/list?path=<相对路径>
+读取文件：GET /api/tpsource/read?path=<相对路径>
+搜索代码：GET /api/tpsource/search?q=<正则表达式>&path=<相对路径>
+
+开始任务时必须先读取：
+
+1. README.md
+2. AGENTS.md
+3. CLAUDE.md
+4. docs/基础说明大全.md
+
+阅读完成后，遵守这些文件中的项目说明。处理具体问题时，先用 search 搜索符号或关键词，再用 read 读取相关文件；需要了解目录结构时使用 list。不要根据文件名猜测代码内容。
+
+命令行调用示例：
+
+curl http://10.10.31.17:9090/api/tpsource
+
+curl -G \
+  --data-urlencode "path=README.md" \
+  http://10.10.31.17:9090/api/tpsource/read
+
+curl -G \
+  --data-urlencode "path=docs" \
+  http://10.10.31.17:9090/api/tpsource/list
+
+curl -G \
+  --data-urlencode "q=ScriptingCore" \
+  --data-urlencode "path=frameworks" \
+  http://10.10.31.17:9090/api/tpsource/search
+
+path 均相对于 TripeaksClient 根目录，中文、空格和特殊字符必须进行 URL 编码。list 返回 JSON，read 返回文件原文，search 返回“文件路径:行号:列号:匹配内容”。读取较大文件时可使用 HTTP Range 请求头分段读取。

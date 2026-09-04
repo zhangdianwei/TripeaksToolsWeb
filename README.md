@@ -32,3 +32,15 @@
 * token应该放在`public/server/shushu/config.json`里面，但是现在里面是空的。
 * token的配置在打包机的`~/Desktop/script/easy_shushu_config.json`。
 * jenkins打包时会自动把这个文件拷贝到最终输出目录。
+
+## TripeaksClient 源码接口
+
+`server/server_config.json` 顶层的 `TripeaksClient` 配置源码绝对路径。服务启动后可通过 HTTP 读取：
+
+* AI 工具接入说明：`http://10.10.31.17:9090/readtp.txt`
+* 接口说明：`GET /api/tpsource`
+* 列出目录：`GET /api/tpsource/list?path=js`
+* 读取文件：`GET /api/tpsource/read?path=js/main.js`
+* 搜索代码：`GET /api/tpsource/search?q=keyword&path=js`
+
+接口无鉴权，`path` 为相对 `TripeaksClient` 的路径。搜索接口的 `q` 按正则表达式解析。

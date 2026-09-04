@@ -10,6 +10,7 @@ import gitRouter from './git/git.js'
 import gsheetRouter from './gsheet/gsheet.js'
 import releaseRouter from './release/release.js'
 import scheduleRouter from './schedule/schedule.js'
+import tpSourceRouter from './tpsource/tpsource.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = 9090
@@ -28,6 +29,7 @@ app.use('/api/git', gitRouter)
 app.use('/api/gsheet', gsheetRouter)
 app.use('/api/release', releaseRouter)
 app.use('/api/schedule', scheduleRouter)
+app.use('/api/tpsource', tpSourceRouter)
 
 if (isProd) {
   app.use(express.static(DIST_PATH))

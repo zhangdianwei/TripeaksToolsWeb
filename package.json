@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cp -r server dist/ && cd dist/server && npm install",
+    "build": "vite build && cp readtp.txt dist/ && cp -r server dist/ && cd dist/server && npm install",
     "server": "node --watch server/server.js"
   },
   "dependencies": {

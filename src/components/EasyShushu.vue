@@ -305,6 +305,7 @@ function getDefaultEventStart() {
 const eventInputVar = reactive({
   projectName: 'Tripeaks1',
   userInput: '',
+  eventNames: '',
   startTime: getDefaultEventStart(),
   endTime: getDefaultEventStart(),
   maxLimit: 5000,
@@ -312,6 +313,7 @@ const eventInputVar = reactive({
 });
 
 const parsedEventInput = computed(() => parseUserInputText(eventInputVar.userInput));
+const parsedEventNames = computed(() => eventInputVar.eventNames.split(/[\s,]+/).map(s => s.trim()).filter(Boolean));
 
 const eventQuerySql = computed(() => {
   const project = projectConfigs[eventInputVar.projectName];
@@ -332,6 +334,9 @@ const eventQuerySql = computed(() => {
   }
   if (groups.user_id.length) conds.push(`"#user_id" IN (${groups.user_id.join(',')})`);
   if (!conds.length) return '-- 请输入至少一个 id';
+  const eventNameCond = parsedEventNames.value.length
+    ? `\n    AND "#event_name" IN (${parsedEventNames.value.map(sqlStr).join(',')})`
+    : '';
   const start = eventInputVar.startTime;
   const end = eventInputVar.endTime;
   if (!start || !end) return '-- 请选择起止日期';
@@ -345,7 +350,7 @@ const eventQuerySql = computed(() => {
     *
   FROM ${project.eventTableName}
   WHERE "$part_date" BETWEEN '${partStart}' AND '${partEnd}'
-    AND (${conds.join(' OR ')})
+    AND (${conds.join(' OR ')})${eventNameCond}
 )
 WHERE event_time_utc >= '${startIso}'
   AND event_time_utc <= '${endIso}'
@@ -710,17 +715,21 @@ function onDownload(source, kind) {
           </Input>
         </FormItem>
         <FormItem>
+          <Input v-model="eventInputVar.eventNames" clearable style="width: 260px"
+            placeholder="事件名（可选，逗号/空格分隔）" />
+        </FormItem>
+        <FormItem>
           <Tooltip placement="top" transfer>
             <DatePicker v-model="eventInputVar.startTime" type="date" format="yyyy-MM-dd"
               transfer placeholder="开始日期" style="width: 160px" />
-            <template #content>开始日期按 UTC 00:00:00.000 计算</template>
+            <template #content>开始日期（UTC）</template>
           </Tooltip>
         </FormItem>
         <FormItem>
           <Tooltip placement="top" transfer>
             <DatePicker v-model="eventInputVar.endTime" type="date" format="yyyy-MM-dd"
               transfer placeholder="结束日期" style="width: 160px" />
-            <template #content>结束日期按 UTC 23:59:59.999 计算</template>
+            <template #content>结束日期（UTC）</template>
           </Tooltip>
         </FormItem>
         <FormItem>

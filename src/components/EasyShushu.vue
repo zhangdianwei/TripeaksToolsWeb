@@ -59,6 +59,11 @@ function addDays(d, days) {
   ret.setDate(ret.getDate() + days);
   return ret;
 }
+function endOfDay(d) {
+  const ret = new Date(d);
+  ret.setHours(23, 59, 59, 999);
+  return ret;
+}
 function sqlStr(s) { return `'${String(s).replace(/'/g, "''")}'`; }
 
 // ============ ID 启发式分类 ============
@@ -301,7 +306,7 @@ const eventInputVar = reactive({
   projectName: 'Tripeaks1',
   userInput: '',
   startTime: getDefaultEventStart(),
-  endTime: new Date(),
+  endTime: getDefaultEventStart(),
   maxLimit: 5000,
   isEventSearching: false,
 });
@@ -329,11 +334,11 @@ const eventQuerySql = computed(() => {
   if (!conds.length) return '-- 请输入至少一个 id';
   const start = eventInputVar.startTime;
   const end = eventInputVar.endTime;
-  if (!start || !end) return '-- 请选择起止时间';
+  if (!start || !end) return '-- 请选择起止日期';
   const partStart = dateToUtcDate(addDays(start, -1));
   const partEnd = dateToUtcDate(addDays(end, 1));
   const startIso = dateToUtcIso(start, '000');
-  const endIso = dateToUtcIso(end, '999');
+  const endIso = dateToUtcIso(endOfDay(end), '999');
   return `SELECT * FROM (
   SELECT
     ${project.eventTimeUtcExpr} event_time_utc,
@@ -428,7 +433,7 @@ async function onClickSearchEvent() {
   try {
     const sql = eventQuerySql.value;
     if (!sql || sql.startsWith('--')) {
-      errorMsg.value = '请输入 id 并选择起止时间';
+      errorMsg.value = '请输入 id 并选择起止日期';
       return;
     }
     const text = await fetchServer(sql);
@@ -705,15 +710,24 @@ function onDownload(source, kind) {
           </Input>
         </FormItem>
         <FormItem>
-          <DatePicker v-model="eventInputVar.startTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
-            transfer placeholder="开始(UTC)" style="width: 200px" />
+          <Tooltip placement="top" transfer>
+            <DatePicker v-model="eventInputVar.startTime" type="date" format="yyyy-MM-dd"
+              transfer placeholder="开始日期" style="width: 160px" />
+            <template #content>开始日期按 UTC 00:00:00.000 计算</template>
+          </Tooltip>
         </FormItem>
         <FormItem>
-          <DatePicker v-model="eventInputVar.endTime" type="datetime" format="yyyy-MM-dd HH:mm:ss"
-            transfer placeholder="结束(UTC)" style="width: 200px" />
+          <Tooltip placement="top" transfer>
+            <DatePicker v-model="eventInputVar.endTime" type="date" format="yyyy-MM-dd"
+              transfer placeholder="结束日期" style="width: 160px" />
+            <template #content>结束日期按 UTC 23:59:59.999 计算</template>
+          </Tooltip>
         </FormItem>
         <FormItem>
-          <InputNumber v-model="eventInputVar.maxLimit" :min="1" :max="100000" style="width: 120px" />
+          <Tooltip placement="top" transfer>
+            <InputNumber v-model="eventInputVar.maxLimit" :min="1" :max="100000" style="width: 120px" />
+            <template #content>最多返回的事件条数</template>
+          </Tooltip>
         </FormItem>
         <FormItem>
           <Tooltip placement="bottom" transfer :max-width="700">

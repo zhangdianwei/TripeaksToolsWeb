@@ -11,6 +11,11 @@ const pendingEndpoint = ref(null);
 const boardFrame = ref(null);
 const dragState = ref(null);
 let suppressCellClick = false;
+const rewardOptions = [1, 2, 3, "dice", "shield"];
+const rewardAssets = {
+  dice: "/snakes_ladders/touzi.png",
+  shield: "/snakes_ladders/shield.png",
+};
 
 const boardAssets = {
   7: "/snakes_ladders/snakes_ladders_qipan7x7.png",
@@ -107,7 +112,7 @@ const randomCounts = {
 function createRandomMap(size, index) {
   const map = createMap(size, index);
   const config = randomCounts[size];
-  const rewardTypes = Array.from({ length: config.rewards }, () => Math.floor(Math.random() * 9) + 1);
+  const rewardTypes = shuffle(Array.from({ length: config.rewards }, (_, i) => rewardOptions[i % rewardOptions.length]));
   return Object.assign(map, buildRandomLayout(size, config.snakes, config.ladders, rewardTypes));
 }
 
@@ -242,7 +247,10 @@ function cellLabel(cellNo) {
   if (cellNo === activeSize.value * activeSize.value) return "结束格";
   const item = draggableItem(cellNo);
   if (!item) return "空白格";
-  if (item.type === "reward") return `奖励格 ${currentMap.value.cells[cellNo]}`;
+  if (item.type === "reward") {
+    const reward = currentMap.value.cells[cellNo];
+    return `奖励格 ${reward === "dice" ? "骰子" : reward === "shield" ? "盾牌" : reward}`;
+  }
   if (item.type === "snake") return item.endpoint === "head" ? "蛇头" : "蛇尾";
   return item.endpoint === "top" ? "梯子顶部" : "梯子底部";
 }
@@ -353,7 +361,7 @@ function setRewardType(type) {
 }
 
 function handleKeydown(event) {
-  if (event.key >= "1" && event.key <= "9") {
+  if (event.key >= "1" && event.key <= "3") {
     setRewardType(Number(event.key));
     return;
   }
@@ -526,7 +534,7 @@ function isValidMap(map) {
   const occupied = new Set([1, size * size]);
   for (const [cellText, rewardType] of Object.entries(map.cells)) {
     const cell = Number(cellText);
-    if (!Number.isInteger(cell) || cell < 2 || cell >= size * size || !Number.isInteger(rewardType) || rewardType < 1 || rewardType > 9 || occupied.has(cell)) return false;
+    if (!Number.isInteger(cell) || cell < 2 || cell >= size * size || !rewardOptions.includes(rewardType) || occupied.has(cell)) return false;
     occupied.add(cell);
   }
   for (const pair of map.snakes) {
@@ -657,13 +665,21 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
             </div>
             <div class="reward-types">
               <Button
-                v-for="rewardType in 9"
+                v-for="rewardType in rewardOptions"
                 :key="rewardType"
                 size="small"
                 :type="selectedOperation === 'reward' && selectedRewardType === rewardType ? 'primary' : 'default'"
                 @click="setRewardType(rewardType)"
               >
-                {{ rewardType }}
+                <span v-if="rewardType === 'dice'" class="reward-option">
+                  <img :src="rewardAssets.dice" alt="" />
+                  骰子
+                </span>
+                <span v-else-if="rewardType === 'shield'" class="reward-option">
+                  <img :src="rewardAssets.shield" alt="" />
+                  盾牌
+                </span>
+                <span v-else>{{ rewardType }}</span>
               </Button>
             </div>
             <span class="tool-divider" />
@@ -727,7 +743,14 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
                   @pointerdown="startDrag(cell, $event)"
                   @click="handleCellClick(cell)"
                 >
-                  <span v-if="currentMap.cells[cell.no]" class="reward-number">{{ currentMap.cells[cell.no] }}</span>
+                  <span v-if="typeof currentMap.cells[cell.no] === 'number'" class="reward-number">{{ currentMap.cells[cell.no] }}</span>
+                  <img
+                    v-else-if="currentMap.cells[cell.no]"
+                    class="reward-image"
+                    :src="rewardAssets[currentMap.cells[cell.no]]"
+                    alt=""
+                    draggable="false"
+                  />
                 </button>
               </div>
             </div>
@@ -955,6 +978,30 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   font-weight: 700;
   line-height: 1;
   text-shadow: 0 1px 1px rgba(255, 255, 255, 0.8);
+}
+
+.reward-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reward-option img {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.reward-image {
+  display: block;
+  width: 66%;
+  height: 66%;
+  margin: auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .pair-image {

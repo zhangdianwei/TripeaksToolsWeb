@@ -8,6 +8,9 @@ const selectedOperation = ref("reward");
 const selectedRewardType = ref(1);
 const selectedCell = ref(null);
 const pendingEndpoint = ref(null);
+const boardFrame = ref(null);
+const dragState = ref(null);
+let suppressCellClick = false;
 
 const boardAssets = {
   7: "/snakes_ladders/snakes_ladders_qipan7x7.png",
@@ -101,10 +104,17 @@ const randomCounts = {
   9: { snakes: 4, ladders: 4, rewards: 10 },
 };
 
+function createRandomMap(size, index) {
+  const map = createMap(size, index);
+  const config = randomCounts[size];
+  const rewardTypes = Array.from({ length: config.rewards }, () => Math.floor(Math.random() * 9) + 1);
+  return Object.assign(map, buildRandomLayout(size, config.snakes, config.ladders, rewardTypes));
+}
+
 const maps = reactive({
-  7: [createMap(7, 1), createMap(7, 2)],
-  8: [createMap(8, 1), createMap(8, 2)],
-  9: [createMap(9, 1), createMap(9, 2)],
+  7: [createRandomMap(7, 1), createRandomMap(7, 2)],
+  8: [createRandomMap(8, 1), createRandomMap(8, 2)],
+  9: [createRandomMap(9, 1), createRandomMap(9, 2)],
 });
 
 const nextMapIndex = reactive({ 7: 3, 8: 3, 9: 3 });
@@ -136,6 +146,7 @@ function selectMap(map) {
   activeMapId.value = map.id;
   selectedCell.value = null;
   pendingEndpoint.value = null;
+  dragState.value = null;
 }
 
 function isFixedCell(cellNo, size = activeSize.value) {
@@ -200,6 +211,10 @@ function finishPair(cellNo) {
 
 function selectCell(cell) {
   if (isCellDisabled(cell.no)) return;
+  if (selectedOperation.value === "select") {
+    selectedCell.value = cell.no;
+    return;
+  }
   if (selectedOperation.value === "snake" || selectedOperation.value === "ladder") {
     if (pendingEndpoint.value == null) startPair(cell.no);
     else finishPair(cell.no);
@@ -209,12 +224,106 @@ function selectCell(cell) {
   else applyReward(cell.no);
 }
 
+function draggableItem(cellNo) {
+  if (currentMap.value.cells[cellNo]) return { type: "reward", source: cellNo };
+  for (const pair of currentMap.value.snakes) {
+    if (pair.head === cellNo) return { type: "snake", pair, endpoint: "head", source: cellNo };
+    if (pair.tail === cellNo) return { type: "snake", pair, endpoint: "tail", source: cellNo };
+  }
+  for (const pair of currentMap.value.ladders) {
+    if (pair.top === cellNo) return { type: "ladder", pair, endpoint: "top", source: cellNo };
+    if (pair.bottom === cellNo) return { type: "ladder", pair, endpoint: "bottom", source: cellNo };
+  }
+  return null;
+}
+
+function cellLabel(cellNo) {
+  if (cellNo === 1) return "开始格";
+  if (cellNo === activeSize.value * activeSize.value) return "结束格";
+  const item = draggableItem(cellNo);
+  if (!item) return "空白格";
+  if (item.type === "reward") return `奖励格 ${currentMap.value.cells[cellNo]}`;
+  if (item.type === "snake") return item.endpoint === "head" ? "蛇头" : "蛇尾";
+  return item.endpoint === "top" ? "梯子顶部" : "梯子底部";
+}
+
+function cellAtPoint(event) {
+  const rect = boardFrame.value.getBoundingClientRect();
+  const bounds = boardBounds[activeSize.value];
+  const x = (event.clientX - rect.left) / rect.width * bounds.width;
+  const y = (event.clientY - rect.top) / rect.height * bounds.height;
+  const col = bounds.x.findIndex((start, index) => index < activeSize.value && x >= start && x < bounds.x[index + 1]);
+  const visualRow = bounds.y.findIndex((start, index) => index < activeSize.value && y >= start && y < bounds.y[index + 1]);
+  if (col < 0 || visualRow < 0) return null;
+  const row = activeSize.value - visualRow - 1;
+  return row % 2 === 0 ? row * activeSize.value + col + 1 : row * activeSize.value + activeSize.value - col;
+}
+
+function canMoveItem(item, target) {
+  if (!target || target === item.source || isFixedCell(target) || isCellOccupied(target)) return false;
+  if (item.type === "reward") return true;
+  const otherEndpoint = item.type === "snake"
+    ? item.pair[item.endpoint === "head" ? "tail" : "head"]
+    : item.pair[item.endpoint === "top" ? "bottom" : "top"];
+  const keepsDirection = item.endpoint === "head" || item.endpoint === "top"
+    ? target > otherEndpoint
+    : target < otherEndpoint;
+  return keepsDirection && isPairGeometryValid(target, otherEndpoint, item.type);
+}
+
+function startDrag(cell, event) {
+  if (selectedOperation.value !== "select") return;
+  const item = draggableItem(cell.no);
+  if (!item) return;
+  dragState.value = { ...item, pointerId: event.pointerId, target: cell.no, moved: false, valid: false };
+  event.currentTarget.setPointerCapture(event.pointerId);
+}
+
+function updateDrag(event) {
+  if (!dragState.value || dragState.value.pointerId !== event.pointerId) return;
+  const target = cellAtPoint(event);
+  dragState.value.target = target;
+  dragState.value.moved = target != null && target !== dragState.value.source;
+  dragState.value.valid = dragState.value.moved && canMoveItem(dragState.value, target);
+}
+
+function finishDrag(event) {
+  if (!dragState.value || dragState.value.pointerId !== event.pointerId) return;
+  updateDrag(event);
+  const drag = dragState.value;
+  if (drag.moved && drag.valid) {
+    if (drag.type === "reward") {
+      currentMap.value.cells[drag.target] = currentMap.value.cells[drag.source];
+      delete currentMap.value.cells[drag.source];
+    } else {
+      drag.pair[drag.endpoint] = drag.target;
+    }
+    selectedCell.value = drag.target;
+  } else if (drag.moved) {
+    selectedCell.value = drag.source;
+  }
+  if (drag.moved) {
+    suppressCellClick = true;
+    window.setTimeout(() => { suppressCellClick = false; });
+  }
+  dragState.value = null;
+}
+
+function cancelDrag() {
+  dragState.value = null;
+}
+
+function handleCellClick(cell) {
+  if (suppressCellClick) {
+    suppressCellClick = false;
+    return;
+  }
+  selectCell(cell);
+}
+
 function newMap(size) {
   const index = nextMapIndex[size]++;
-  const map = createMap(size, index);
-  const config = randomCounts[size];
-  const rewardTypes = Array.from({ length: config.rewards }, () => Math.floor(Math.random() * 9) + 1);
-  Object.assign(map, buildRandomLayout(size, config.snakes, config.ladders, rewardTypes));
+  const map = createRandomMap(size, index);
   maps[size].push(map);
   activeMapId.value = map.id;
   selectedCell.value = null;
@@ -235,6 +344,7 @@ function setOperation(operation) {
   selectedOperation.value = operation;
   pendingEndpoint.value = null;
   selectedCell.value = null;
+  dragState.value = null;
 }
 
 function setRewardType(type) {
@@ -247,7 +357,8 @@ function handleKeydown(event) {
     setRewardType(Number(event.key));
     return;
   }
-  if (event.key.toLowerCase() === "s") setOperation("snake");
+  if (event.key.toLowerCase() === "q") setOperation("select");
+  else if (event.key.toLowerCase() === "s") setOperation("snake");
   else if (event.key.toLowerCase() === "t") setOperation("ladder");
   else if (event.key.toLowerCase() === "d" || event.key === "Delete") setOperation("clear");
 }
@@ -310,10 +421,18 @@ function hasValidPartner(cellNo, type) {
 
 function isCellDisabled(cellNo) {
   if (isFixedCell(cellNo)) return true;
+  if (selectedOperation.value === "select") return false;
   if (selectedOperation.value === "clear") return !isCellOccupied(cellNo);
   if (selectedOperation.value === "reward") return isCellOccupied(cellNo);
   if (pendingEndpoint.value != null) return cellNo === pendingEndpoint.value || !canPlacePair(pendingEndpoint.value, cellNo, selectedOperation.value);
   return !hasValidPartner(cellNo, selectedOperation.value);
+}
+
+function isCellDimmed(cellNo) {
+  if (dragState.value?.moved) {
+    return cellNo !== dragState.value.source && !canMoveItem(dragState.value, cellNo);
+  }
+  return (selectedOperation.value === "snake" || selectedOperation.value === "ladder") && isCellDisabled(cellNo);
 }
 
 function shuffle(items) {
@@ -518,6 +637,12 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
           <div class="map-tools">
             <div class="operation-types">
               <Button
+                :type="selectedOperation === 'select' ? 'primary' : 'default'"
+                @click="setOperation('select')"
+              >
+                选择(q)
+              </Button>
+              <Button
                 :type="selectedOperation === 'snake' ? 'primary' : 'default'"
                 @click="setOperation('snake')"
               >
@@ -554,7 +679,13 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
           </div>
 
           <div class="board-stage">
-            <div class="board-frame">
+            <div
+              ref="boardFrame"
+              class="board-frame"
+              @pointermove="updateDrag"
+              @pointerup="finishDrag"
+              @pointercancel="cancelDrag"
+            >
               <img class="board-background" :src="boardAssets[activeSize]" alt="蛇梯棋盘" />
               <img
                 v-for="pair in currentMap.snakes"
@@ -583,11 +714,18 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
                     reward: currentMap.cells[cell.no],
                     start: cell.no === 1,
                     finish: cell.no === activeSize * activeSize,
+                    draggable: selectedOperation === 'select' && isCellOccupied(cell.no),
+                    dimmed: isCellDimmed(cell.no),
+                    'drag-source': dragState?.source === cell.no,
+                    'drag-target': dragState?.moved && dragState?.target === cell.no,
+                    'drag-invalid': dragState?.moved && dragState?.target === cell.no && !dragState?.valid,
                   }"
                   type="button"
+                  :data-cell="cell.no"
                   :disabled="isCellDisabled(cell.no)"
-                  :aria-label="cell.no === 1 ? '开始格' : cell.no === activeSize * activeSize ? '结束格' : `奖励格 ${currentMap.cells[cell.no] || '空白'}`"
-                  @click="selectCell(cell)"
+                  :aria-label="cellLabel(cell.no)"
+                  @pointerdown="startDrag(cell, $event)"
+                  @click="handleCellClick(cell)"
                 >
                   <span v-if="currentMap.cells[cell.no]" class="reward-number">{{ currentMap.cells[cell.no] }}</span>
                 </button>
@@ -778,8 +916,32 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   box-shadow: inset 0 0 0 3px #ff8a00;
 }
 
+.board-cell.draggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.board-cell.drag-source {
+  cursor: grabbing;
+}
+
 .board-cell.reward {
   background: rgba(255, 193, 7, 0.34);
+}
+
+.board-cell.dimmed {
+  background: rgba(23, 35, 61, 0.28);
+  box-shadow: none;
+}
+
+.board-cell.drag-target {
+  background: rgba(25, 190, 107, 0.24);
+  box-shadow: inset 0 0 0 3px #19be6b;
+}
+
+.board-cell.drag-target.drag-invalid {
+  background: rgba(237, 64, 20, 0.2);
+  box-shadow: inset 0 0 0 3px #ed4014;
 }
 
 .board-cell.start,

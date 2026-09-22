@@ -11,8 +11,10 @@ import BuriedBounty from "./components/BuriedBounty.vue";
 import PlayableAds from "./components/PlayableAds.vue";
 import ReleaseFlow from "./components/ReleaseFlow.vue";
 import BackgroundTasks from "./components/BackgroundTasks.vue";
+import SnakesLadders from "./components/SnakesLadders.vue";
 
 const PageConfigs = [
+  { name: "蛇梯地图编辑器", comp: SnakesLadders },
   { name: "小狗快跑地图编辑器", comp: DogRun },
   { name: "敲格子UI编辑器", comp: BuriedBounty },
   { name: "PlayableAds", comp: PlayableAds },

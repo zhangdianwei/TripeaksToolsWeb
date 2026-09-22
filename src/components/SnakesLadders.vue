@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
-import { Button, Card, Icon, Message, Upload } from "view-ui-plus";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { Button, Card, Icon, InputNumber, Message, Table, TabPane, Tabs, Upload } from "view-ui-plus";
 
 const sizes = [7, 8, 9];
+const autoSaveKey = "snakes_ladders_maps_autosave";
 const activeMapId = ref("7-1");
 const selectedOperation = ref("select");
 const selectedRewardType = ref(1);
@@ -16,6 +17,30 @@ const rewardAssets = {
   dice: "/snakes_ladders/touzi.png",
   shield: "/snakes_ladders/shield.png",
 };
+const activeTab = ref("edit");
+const singleRunning = ref(false);
+const singlePlayerCell = ref(1);
+const singleCurrentRoll = ref(null);
+const singleResult = ref(null);
+const singleEvents = ref([]);
+const multiRounds = ref(2000);
+const multiResult = ref(null);
+const simulationCache = reactive({});
+let simulationToken = 0;
+
+const singleColumns = [
+  { title: "次数", key: "turn", width: 70 },
+  { title: "点数", key: "roll", width: 70 },
+  { title: "移动", key: "path", width: 150 },
+  { title: "结果", key: "effect", minWidth: 180 },
+];
+
+const multiStatColumns = [
+  { title: "指标", key: "label", width: 120 },
+  { title: "平均", key: "average", width: 100 },
+  { title: "最小", key: "min", width: 100 },
+  { title: "最大", key: "max", width: 100 },
+];
 
 const boardAssets = {
   7: "/snakes_ladders/snakes_ladders_qipan7x7.png",
@@ -147,11 +172,52 @@ const boardRows = computed(() => {
   });
 });
 
+function clearSimulationRefs() {
+  singleRunning.value = false;
+  singlePlayerCell.value = 1;
+  singleCurrentRoll.value = null;
+  singleResult.value = null;
+  singleEvents.value = [];
+  multiResult.value = null;
+}
+
+function loadSimulationResults(mapId) {
+  const cached = simulationCache[mapId];
+  if (!cached) {
+    clearSimulationRefs();
+    return;
+  }
+  singleRunning.value = false;
+  singlePlayerCell.value = cached.singlePlayerCell || 1;
+  singleCurrentRoll.value = null;
+  singleResult.value = cached.singleResult;
+  singleEvents.value = cached.singleEvents ? cached.singleEvents.slice() : [];
+  multiResult.value = cached.multiResult;
+}
+
+function persistSimulationResults() {
+  simulationCache[activeMapId.value] = {
+    singlePlayerCell: singlePlayerCell.value,
+    singleResult: singleResult.value,
+    singleEvents: singleEvents.value.slice(),
+    multiResult: multiResult.value,
+  };
+}
+
+function resetSimulationResults() {
+  simulationToken += 1;
+  if (activeMapId.value) delete simulationCache[activeMapId.value];
+  clearSimulationRefs();
+}
+
 function selectMap(map) {
+  if (singleRunning.value) persistSimulationResults();
+  simulationToken += 1;
   activeMapId.value = map.id;
   selectedCell.value = null;
   pendingEndpoint.value = null;
   dragState.value = null;
+  loadSimulationResults(map.id);
 }
 
 function isFixedCell(cellNo, size = activeSize.value) {
@@ -186,12 +252,14 @@ function applyReward(cellNo) {
   if (isFixedCell(cellNo) || isCellOccupied(cellNo)) return;
   currentMap.value.cells[cellNo] = selectedRewardType.value;
   selectedCell.value = cellNo;
+  resetSimulationResults();
 }
 
 function clearCell(cellNo) {
   if (isFixedCell(cellNo)) return;
   removeCellOccupancy(cellNo);
   selectedCell.value = cellNo;
+  resetSimulationResults();
 }
 
 function startPair(cellNo) {
@@ -212,6 +280,7 @@ function finishPair(cellNo) {
   }
   pendingEndpoint.value = null;
   selectedCell.value = null;
+  resetSimulationResults();
 }
 
 function selectCell(cell) {
@@ -280,7 +349,7 @@ function canMoveItem(item, target) {
 }
 
 function startDrag(cell, event) {
-  if (selectedOperation.value !== "select") return;
+  if (activeTab.value !== "edit" || selectedOperation.value !== "select") return;
   const item = draggableItem(cell.no);
   if (!item) return;
   dragState.value = { ...item, pointerId: event.pointerId, target: cell.no, moved: false, valid: false };
@@ -307,6 +376,7 @@ function finishDrag(event) {
       drag.pair[drag.endpoint] = drag.target;
     }
     selectedCell.value = drag.target;
+    resetSimulationResults();
   } else if (drag.moved) {
     selectedCell.value = drag.source;
   }
@@ -336,16 +406,20 @@ function newMap(size) {
   activeMapId.value = map.id;
   selectedCell.value = null;
   pendingEndpoint.value = null;
+  resetSimulationResults();
 }
 
 function removeMap(size, mapId) {
   const index = maps[size].findIndex((map) => map.id === mapId);
   maps[size].splice(index, 1);
+  delete simulationCache[mapId];
   if (activeMapId.value !== mapId) return;
   const next = maps[size][index] || maps[size][index - 1] || sizes.flatMap((value) => maps[value])[0];
   activeMapId.value = next?.id || "";
   selectedCell.value = null;
   pendingEndpoint.value = null;
+  simulationToken += 1;
+  loadSimulationResults(activeMapId.value);
 }
 
 function setOperation(operation) {
@@ -361,6 +435,7 @@ function setRewardType(type) {
 }
 
 function handleKeydown(event) {
+  if (activeTab.value !== "edit") return;
   if (event.key >= "1" && event.key <= "3") {
     setRewardType(Number(event.key));
     return;
@@ -428,6 +503,7 @@ function hasValidPartner(cellNo, type) {
 }
 
 function isCellDisabled(cellNo) {
+  if (activeTab.value !== "edit") return true;
   if (isFixedCell(cellNo)) return true;
   if (selectedOperation.value === "select") return false;
   if (selectedOperation.value === "clear") return !isCellOccupied(cellNo);
@@ -437,6 +513,7 @@ function isCellDisabled(cellNo) {
 }
 
 function isCellDimmed(cellNo) {
+  if (activeTab.value !== "edit") return false;
   if (dragState.value?.moved) {
     return cellNo !== dragState.value.source && !canMoveItem(dragState.value, cellNo);
   }
@@ -501,6 +578,7 @@ function rearrangeMap() {
   currentMap.value.ladders = layout.ladders;
   selectedCell.value = null;
   pendingEndpoint.value = null;
+  resetSimulationResults();
 }
 
 function pairImage(pair, type) {
@@ -528,6 +606,210 @@ function pairImageStyle(pair, type) {
   };
 }
 
+function summarize(values) {
+  if (!values.length) return { average: 0, min: 0, max: 0, median: 0 };
+  const sorted = values.slice().sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return {
+    average: Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)),
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2,
+  };
+}
+
+function createMetric(label, values) {
+  const { average, min, max } = summarize(values);
+  return { label, average, min, max };
+}
+
+function createSimulationState(map) {
+  return {
+    position: 1,
+    finish: map.size * map.size,
+    rolls: [],
+    claimedCells: new Set(),
+    shields: 0,
+    shieldsGained: 0,
+    shieldsUsed: 0,
+    extraDice: 0,
+    items: 0,
+    rewardLandings: 0,
+    rewardHits: {},
+    snakeHits: 0,
+    snakeDrops: 0,
+    ladders: 0,
+    events: [],
+  };
+}
+
+function performSimulationRoll(state, map, roll = Math.floor(Math.random() * 6) + 1) {
+  const from = state.position;
+  const landing = Math.min(from + roll, state.finish);
+  state.rolls.push(roll);
+  state.position = landing;
+  let effect = landing === state.finish ? "到达终点" : "无事发生";
+  if (landing < state.finish) {
+    const snake = map.snakes.find((pair) => pair.head === landing);
+    const ladder = map.ladders.find((pair) => pair.bottom === landing);
+    const reward = map.cells[landing];
+    if (snake) {
+      state.snakeHits += 1;
+      if (state.shields > 0) {
+        state.shields -= 1;
+        state.shieldsUsed += 1;
+        effect = "消耗盾牌，抵消蛇";
+      } else {
+        state.position = snake.tail;
+        state.snakeDrops += 1;
+        effect = `触发蛇，退到 ${snake.tail}`;
+      }
+    } else if (ladder) {
+      state.position = ladder.top;
+      state.ladders += 1;
+      effect = `触发梯子，前进到 ${ladder.top}`;
+    } else if (typeof reward === "number") {
+      state.items += reward;
+      state.rewardLandings += 1;
+      state.rewardHits[landing] = (state.rewardHits[landing] || 0) + 1;
+      effect = `获得 ${reward} 个道具`;
+    } else if (reward && !state.claimedCells.has(landing)) {
+      state.claimedCells.add(landing);
+      if (reward === "dice") {
+        state.extraDice += 1;
+        effect = "获得 1 个骰子";
+      } else {
+        state.shields += 1;
+        state.shieldsGained += 1;
+        effect = "获得 1 个盾牌";
+      }
+    } else if (reward) {
+      effect = reward === "dice" ? "骰子已领取" : "盾牌已领取";
+    }
+  }
+  const event = {
+    turn: state.rolls.length,
+    roll,
+    from,
+    landing,
+    final: state.position,
+    path: state.position === landing ? `${from} → ${landing}` : `${from} → ${landing} → ${state.position}`,
+    effect,
+  };
+  state.events.push(event);
+  return event;
+}
+
+function completeSimulation(state) {
+  return {
+    consumedDice: state.rolls.length,
+    netDice: state.rolls.length - state.extraDice,
+    extraDice: state.extraDice,
+    shieldsGained: state.shieldsGained,
+    shieldsUsed: state.shieldsUsed,
+    remainingShields: state.shields,
+    items: state.items,
+    rewardLandings: state.rewardLandings,
+    rewardHits: { ...state.rewardHits },
+    snakeHits: state.snakeHits,
+    snakeDrops: state.snakeDrops,
+    ladders: state.ladders,
+    rollStats: summarize(state.rolls),
+    rolls: state.rolls.slice(),
+    events: state.events.slice(),
+  };
+}
+
+function runSimulation(map) {
+  const state = createSimulationState(map);
+  while (state.position < state.finish) performSimulationRoll(state, map);
+  return completeSimulation(state);
+}
+
+function rewardHitRows(hits) {
+  return Object.entries(hits || {})
+    .map(([cell, count]) => ({ cell: Number(cell), reward: currentMap.value.cells[cell], count }))
+    .sort((a, b) => a.cell - b.cell);
+}
+
+function numericRewardCounts(hits, map) {
+  return [1, 2, 3].reduce((counts, reward) => {
+    counts[reward] = Object.entries(hits || {}).reduce(
+      (total, [cell, count]) => total + (map.cells[cell] === reward ? count : 0),
+      0,
+    );
+    return counts;
+  }, {});
+}
+
+const singleRewardHits = computed(() => rewardHitRows(singleResult.value?.rewardHits));
+const singlePlayerStyle = computed(() => {
+  const point = cellPoint(singlePlayerCell.value);
+  return {
+    left: `${point.x}%`,
+    top: `${point.y}%`,
+    width: `${76 / boardBounds[activeSize.value].width * 100}%`,
+  };
+});
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function runSingleSimulation() {
+  const token = ++simulationToken;
+  const map = currentMap.value;
+  const state = createSimulationState(map);
+  singleRunning.value = true;
+  singlePlayerCell.value = 1;
+  singleCurrentRoll.value = null;
+  singleResult.value = null;
+  singleEvents.value = [];
+  while (state.position < state.finish) {
+    const event = performSimulationRoll(state, map);
+    singleCurrentRoll.value = event.roll;
+    singlePlayerCell.value = event.final;
+    singleEvents.value = state.events.slice();
+    singleResult.value = completeSimulation(state);
+    await wait(200);
+    if (token !== simulationToken) return;
+  }
+  singleResult.value = completeSimulation(state);
+  singleCurrentRoll.value = null;
+  singleRunning.value = false;
+  persistSimulationResults();
+}
+
+function runMultipleSimulation() {
+  const count = Math.max(1, Math.round(multiRounds.value || 1));
+  const map = currentMap.value;
+  const runs = Array.from({ length: count }, () => runSimulation(map));
+  const rewardRuns = runs.map((run) => numericRewardCounts(run.rewardHits, map));
+  multiResult.value = {
+    rounds: count,
+    metrics: [
+      createMetric("消耗骰子", runs.map((run) => run.consumedDice)),
+      createMetric("获得骰子", runs.map((run) => run.extraDice)),
+      createMetric("获得盾牌", runs.map((run) => run.shieldsGained)),
+      createMetric("消耗盾牌", runs.map((run) => run.shieldsUsed)),
+      createMetric("奖励1", rewardRuns.map((counts) => counts[1])),
+      createMetric("奖励2", rewardRuns.map((counts) => counts[2])),
+      createMetric("奖励3", rewardRuns.map((counts) => counts[3])),
+      createMetric("触发蛇次数", runs.map((run) => run.snakeHits)),
+      createMetric("触发梯子次数", runs.map((run) => run.ladders)),
+    ],
+  };
+  persistSimulationResults();
+}
+
+function handleTabChange(name) {
+  if (name !== "single" && singleRunning.value) {
+    simulationToken += 1;
+    singleRunning.value = false;
+    persistSimulationResults();
+  }
+}
+
 function isValidMap(map) {
   const size = map.size;
   if (!sizes.includes(size) || !map.cells || !Array.isArray(map.snakes) || !Array.isArray(map.ladders)) return false;
@@ -550,10 +832,57 @@ function isValidMap(map) {
   return true;
 }
 
+function serializeMap(map) {
+  return {
+    id: map.id,
+    name: map.name,
+    size: map.size,
+    cells: map.cells,
+    snakes: map.snakes,
+    ladders: map.ladders,
+  };
+}
+
+function saveAutoState() {
+  try {
+    const data = {
+      version: 1,
+      activeMapId: activeMapId.value,
+      maps: sizes.flatMap((size) => maps[size]).map(serializeMap),
+    };
+    window.localStorage.setItem(autoSaveKey, JSON.stringify(data));
+  } catch {
+  }
+}
+
+function loadAutoState() {
+  try {
+    const raw = window.localStorage.getItem(autoSaveKey);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.version !== 1 || !Array.isArray(data.maps) || !data.maps.every(isValidMap)) return;
+    for (const size of sizes) {
+      const group = data.maps.filter((map) => map.size === size).map((map, index) => ({
+        ...JSON.parse(JSON.stringify(map)),
+        id: map.id || `${size}-${index + 1}`,
+        name: map.name || `地图${index + 1}`,
+      }));
+      maps[size].splice(0, maps[size].length, ...group);
+      const indexes = group.map((map) => Number(String(map.id).split("-").pop()) || 0);
+      nextMapIndex[size] = Math.max(group.length, ...indexes) + 1;
+    }
+    const allMaps = sizes.flatMap((size) => maps[size]);
+    activeMapId.value = allMaps.some((map) => map.id === data.activeMapId)
+      ? data.activeMapId
+      : allMaps[0]?.id || "";
+  } catch {
+  }
+}
+
 function exportMaps() {
   const data = {
     version: 1,
-    maps: sizes.flatMap((size) => maps[size]),
+    maps: sizes.flatMap((size) => maps[size]).map(serializeMap),
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
   const link = document.createElement("a");
@@ -576,10 +905,12 @@ async function importMaps(file) {
       maps[size].splice(0, maps[size].length, ...group);
       nextMapIndex[size] = group.length + 1;
     }
+    Object.keys(simulationCache).forEach((mapId) => delete simulationCache[mapId]);
     const firstMap = sizes.flatMap((size) => maps[size])[0];
     activeMapId.value = firstMap?.id || "";
     selectedCell.value = null;
     pendingEndpoint.value = null;
+    resetSimulationResults();
     Message.success("导入成功");
   } catch {
     Message.error("导入失败，地图数据不符合规则");
@@ -587,7 +918,12 @@ async function importMaps(file) {
   return false;
 }
 
-onMounted(() => window.addEventListener("keydown", handleKeydown));
+watch([maps, activeMapId], saveAutoState, { deep: true });
+
+onMounted(() => {
+  loadAutoState();
+  window.addEventListener("keydown", handleKeydown);
+});
 onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 </script>
 
@@ -636,32 +972,14 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
         </div>
       </Card>
 
-      <Card class="map-area-card" dis-hover>
-        <template #title>
-          <span v-if="currentMap">地图大小（{{ activeSize }}x{{ activeSize }}）</span>
-          <span v-else>地图区域</span>
-        </template>
-        <div v-if="currentMap" class="map-area-content">
+      <Tabs v-model="activeTab" class="map-content-tabs" :animated="false" @on-click="handleTabChange">
+        <TabPane label="地图编辑" name="edit">
+        <div class="tab-actions">
           <div class="map-tools">
             <div class="operation-types">
-              <Button
-                :type="selectedOperation === 'select' ? 'primary' : 'default'"
-                @click="setOperation('select')"
-              >
-                选择(q)
-              </Button>
-              <Button
-                :type="selectedOperation === 'snake' ? 'primary' : 'default'"
-                @click="setOperation('snake')"
-              >
-                蛇(s)
-              </Button>
-              <Button
-                :type="selectedOperation === 'ladder' ? 'primary' : 'default'"
-                @click="setOperation('ladder')"
-              >
-                梯子(t)
-              </Button>
+              <Button :type="selectedOperation === 'select' ? 'primary' : 'default'" @click="setOperation('select')">选择(q)</Button>
+              <Button :type="selectedOperation === 'snake' ? 'primary' : 'default'" @click="setOperation('snake')">蛇(s)</Button>
+              <Button :type="selectedOperation === 'ladder' ? 'primary' : 'default'" @click="setOperation('ladder')">梯子(t)</Button>
             </div>
             <div class="reward-types">
               <Button
@@ -671,29 +989,19 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
                 :type="selectedOperation === 'reward' && selectedRewardType === rewardType ? 'primary' : 'default'"
                 @click="setRewardType(rewardType)"
               >
-                <span v-if="rewardType === 'dice'" class="reward-option">
-                  <img :src="rewardAssets.dice" alt="" />
-                  骰子
-                </span>
-                <span v-else-if="rewardType === 'shield'" class="reward-option">
-                  <img :src="rewardAssets.shield" alt="" />
-                  盾牌
-                </span>
+                <span v-if="rewardType === 'dice'" class="reward-option"><img :src="rewardAssets.dice" alt="" />骰子</span>
+                <span v-else-if="rewardType === 'shield'" class="reward-option"><img :src="rewardAssets.shield" alt="" />盾牌</span>
                 <span v-else>{{ rewardType }}</span>
               </Button>
             </div>
             <span class="tool-divider" />
-            <Button
-              :type="selectedOperation === 'clear' ? 'primary' : 'default'"
-              icon="md-eraser"
-              @click="setOperation('clear')"
-            >
-              清除(d)
-            </Button>
+            <Button :type="selectedOperation === 'clear' ? 'primary' : 'default'" icon="md-eraser" @click="setOperation('clear')">清除(d)</Button>
             <span class="tool-divider" />
             <Button icon="md-shuffle" @click="rearrangeMap">重排</Button>
           </div>
-
+        </div>
+        <Card class="map-area-card" dis-hover>
+        <div v-if="currentMap" class="map-area-content">
           <div class="board-stage">
             <div
               ref="boardFrame"
@@ -760,7 +1068,80 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
           <Icon type="ios-map-outline" />
           <div>暂无地图</div>
         </div>
-      </Card>
+        </Card>
+        </TabPane>
+
+        <TabPane label="单次模拟" name="single">
+        <div class="tab-actions">
+          <Button type="primary" icon="md-play" :loading="singleRunning" @click="runSingleSimulation">
+            {{ singleRunning ? "运行中" : "运行一次" }}
+          </Button>
+        </div>
+        <Card class="simulation-card" dis-hover>
+          <div class="simulation-board-stage">
+            <div class="board-frame simulation-board">
+              <img class="board-background" :src="boardAssets[activeSize]" alt="蛇梯棋盘" />
+              <img
+                v-for="pair in currentMap.snakes"
+                :key="`single-snake-${pair.head}-${pair.tail}`"
+                class="pair-image"
+                :src="pairImage(pair, 'snake')"
+                :style="pairImageStyle(pair, 'snake')"
+                alt=""
+              />
+              <img
+                v-for="pair in currentMap.ladders"
+                :key="`single-ladder-${pair.bottom}-${pair.top}`"
+                class="pair-image"
+                :src="pairImage(pair, 'ladder')"
+                :style="pairImageStyle(pair, 'ladder')"
+                alt=""
+              />
+              <div v-for="(row, rowIndex) in boardRows" :key="`single-row-${rowIndex}`" class="board-row" :style="row.style">
+                <div v-for="cell in row.cells" :key="cell.no" class="simulation-cell">
+                  <span v-if="typeof currentMap.cells[cell.no] === 'number'" class="reward-number">{{ currentMap.cells[cell.no] }}</span>
+                  <img v-else-if="currentMap.cells[cell.no]" class="reward-image" :src="rewardAssets[currentMap.cells[cell.no]]" alt="" />
+                </div>
+              </div>
+              <img class="player-image" :src="'/snakes_ladders/player.png'" :style="singlePlayerStyle" alt="玩家" />
+            </div>
+          </div>
+          <div v-if="singleCurrentRoll" class="simulation-status">本次掷出 {{ singleCurrentRoll }} 点，玩家在第 {{ singlePlayerCell }} 格</div>
+          <div v-if="singleResult" class="simulation-summary">
+            <div class="summary-grid">
+              <div>消耗骰子：{{ singleResult.consumedDice }}</div>
+              <div>获得骰子：{{ singleResult.extraDice }}</div>
+              <div>获得盾牌：{{ singleResult.shieldsGained }}</div>
+              <div>剩余盾牌：{{ singleResult.remainingShields }}</div>
+              <div>获得道具：{{ singleResult.items }}</div>
+              <div>蛇触发：{{ singleResult.snakeHits }}（后退 {{ singleResult.snakeDrops }} 次）</div>
+              <div>梯子触发：{{ singleResult.ladders }}</div>
+              <div>数字奖励停留：{{ singleResult.rewardLandings }} 次</div>
+              <div class="roll-stats">掷骰点数平均 / 最小 / 最大 / 中位数：{{ singleResult.rollStats.average }} / {{ singleResult.rollStats.min }} / {{ singleResult.rollStats.max }} / {{ singleResult.rollStats.median }}</div>
+            </div>
+            <Table :columns="singleColumns" :data="singleEvents" size="small" border />
+            <div v-if="singleRewardHits.length" class="reward-hit-list">数字奖励格踩中：<span v-for="item in singleRewardHits" :key="item.cell">{{ item.cell }}格（奖励{{ item.reward }}）× {{ item.count }}次</span></div>
+          </div>
+        </Card>
+        </TabPane>
+
+        <TabPane label="多次模拟" name="multi">
+        <div class="tab-actions">
+          <div class="multi-run-controls">
+            <span>运行轮数</span>
+            <InputNumber v-model="multiRounds" :min="1" :max="10000" :step="1" />
+            <Button type="primary" icon="md-play" @click="runMultipleSimulation">运行</Button>
+          </div>
+        </div>
+        <Card class="simulation-card" dis-hover>
+          <div v-if="multiResult" class="simulation-summary">
+            <div class="multi-result-meta">模拟轮数：{{ multiResult.rounds }}</div>
+            <Table :columns="multiStatColumns" :data="multiResult.metrics" size="small" border />
+          </div>
+          <div v-else class="simulation-empty">点击运行，查看多轮统计结果</div>
+        </Card>
+        </TabPane>
+      </Tabs>
     </div>
   </div>
 </template>
@@ -781,6 +1162,22 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   gap: 24px;
   justify-content: space-between;
   margin-bottom: 16px;
+}
+
+.tab-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 0;
+  margin-bottom: 0;
+  padding: 0 0 8px;
+  border-bottom: 1px solid #e8eaec;
+}
+
+.tab-actions .global-actions {
+  justify-content: center;
 }
 
 .global-actions {
@@ -805,6 +1202,124 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   grid-template-columns: 210px minmax(560px, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.map-content-tabs {
+  min-width: 0;
+}
+
+.simulation-card {
+  min-height: 720px;
+}
+
+.map-area-card,
+.simulation-card {
+  border: 0;
+  box-shadow: none;
+}
+
+.map-area-card :deep(.ivu-card-body),
+.simulation-card :deep(.ivu-card-body) {
+  padding: 0;
+}
+
+.multi-run-controls {
+  display: flex;
+  align-items: center;
+}
+
+.multi-run-controls {
+  gap: 8px;
+  font-weight: 400;
+}
+
+.multi-run-controls .ivu-input-number {
+  width: 90px;
+}
+
+.simulation-board-stage {
+  display: flex;
+  justify-content: center;
+  padding: 0 8px 8px;
+}
+
+.simulation-board {
+  max-width: 720px;
+}
+
+.simulation-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+}
+
+.simulation-cell .reward-number {
+  font-size: clamp(22px, 4vw, 42px);
+}
+
+.simulation-cell .reward-image {
+  width: 66%;
+  height: 66%;
+}
+
+.player-image {
+  position: absolute;
+  z-index: 4;
+  height: auto;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: left 0.12s linear, top 0.12s linear;
+}
+
+.simulation-status {
+  margin: 4px auto 16px;
+  color: #515a6e;
+  text-align: center;
+}
+
+.simulation-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 16px;
+  padding: 12px;
+  color: #515a6e;
+  background: #f8f8f9;
+  border: 1px solid #e8eaec;
+}
+
+.multi-result-meta {
+  margin-bottom: 8px;
+  color: #17233c;
+  font-weight: 600;
+}
+
+.roll-stats {
+  grid-column: 1 / -1;
+}
+
+.reward-hit-list {
+  color: #515a6e;
+  line-height: 24px;
+}
+
+.reward-hit-list span {
+  display: inline-block;
+  margin-right: 12px;
+}
+
+.simulation-empty {
+  padding: 100px 0;
+  color: #808695;
+  text-align: center;
 }
 
 .map-list-card,
@@ -876,6 +1391,12 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   border-bottom: 1px solid #e8eaec;
 }
 
+.tab-actions .map-tools {
+  min-height: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+
 .operation-types,
 .reward-types {
   display: flex;
@@ -896,7 +1417,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 .board-stage {
   display: flex;
   justify-content: center;
-  padding: 22px 8px 8px;
+  padding: 0 8px 8px;
 }
 
 .board-frame {
@@ -1053,5 +1574,6 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   .global-actions {
     width: 100%;
   }
+
 }
 </style>

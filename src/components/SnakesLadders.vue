@@ -4,7 +4,7 @@ import { Button, Card, Icon, Message, Upload } from "view-ui-plus";
 
 const sizes = [7, 8, 9];
 const activeMapId = ref("7-1");
-const selectedOperation = ref("reward");
+const selectedOperation = ref("select");
 const selectedRewardType = ref(1);
 const selectedCell = ref(null);
 const pendingEndpoint = ref(null);
@@ -660,7 +660,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
                 v-for="rewardType in 9"
                 :key="rewardType"
                 size="small"
-                :type="selectedRewardType === rewardType ? 'primary' : 'default'"
+                :type="selectedOperation === 'reward' && selectedRewardType === rewardType ? 'primary' : 'default'"
                 @click="setRewardType(rewardType)"
               >
                 {{ rewardType }}
@@ -930,7 +930,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 }
 
 .board-cell.dimmed {
-  background: rgba(23, 35, 61, 0.28);
+  background: rgba(23, 35, 61, 0.85);
   box-shadow: none;
 }
 
@@ -940,7 +940,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 }
 
 .board-cell.drag-target.drag-invalid {
-  background: rgba(237, 64, 20, 0.2);
+  background: rgba(23, 35, 61, 0.85);
   box-shadow: inset 0 0 0 3px #ed4014;
 }
 

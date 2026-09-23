@@ -662,7 +662,25 @@ function createSimulationState(map) {
   };
 }
 
-function performSimulationRoll(state, map, roll = Math.floor(Math.random() * 6) + 1) {
+function rollSimulationDice(state, map) {
+  let rolls = [1, 2, 3, 4, 5, 6];
+  let protectedRoll = false;
+  if (map.snakes.length > 0 && state.snakeDrops === map.snakes.length) {
+    const snakeHeads = new Set(map.snakes.map((pair) => pair.head));
+    const safeRolls = rolls.filter((roll) => !snakeHeads.has(Math.min(state.position + roll, state.finish)));
+    if (safeRolls.length) {
+      rolls = safeRolls;
+      protectedRoll = true;
+    }
+  }
+  return {
+    roll: rolls[Math.floor(Math.random() * rolls.length)],
+    protectedRoll,
+  };
+}
+
+function performSimulationRoll(state, map) {
+  const { roll, protectedRoll } = rollSimulationDice(state, map);
   const from = state.position;
   const landing = Math.min(from + roll, state.finish);
   state.rolls.push(roll);
@@ -713,7 +731,7 @@ function performSimulationRoll(state, map, roll = Math.floor(Math.random() * 6) 
     landing,
     final: state.position,
     path: state.position === landing ? `${from} → ${landing}` : `${from} → ${landing} → ${state.position}`,
-    effect,
+    effect: protectedRoll ? `极值保底；${effect}` : effect,
   };
   state.events.push(event);
   return event;

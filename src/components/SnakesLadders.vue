@@ -23,6 +23,7 @@ const singlePlayerCell = ref(1);
 const singleCurrentRoll = ref(null);
 const singleResult = ref(null);
 const singleEvents = ref([]);
+const singleStepState = ref(null);
 const multiRounds = ref(2000);
 const multiResult = ref(null);
 const simulationCache = reactive({});
@@ -172,12 +173,28 @@ const boardRows = computed(() => {
   });
 });
 
+const mapStats = computed(() => {
+  const map = currentMap.value;
+  if (!map) return { shields: 0, dice: 0, rewards: 0, snakeSpan: 0, ladderSpan: 0 };
+  const rewards = Object.values(map.cells);
+  const snakeSpan = map.snakes.reduce((sum, pair) => sum + pair.head - pair.tail, 0);
+  const ladderSpan = map.ladders.reduce((sum, pair) => sum + pair.top - pair.bottom, 0);
+  return {
+    shields: rewards.filter((reward) => reward === "shield").length,
+    dice: rewards.filter((reward) => reward === "dice").length,
+    rewards: rewards.filter((reward) => typeof reward === "number").length,
+    snakeSpan,
+    ladderSpan,
+  };
+});
+
 function clearSimulationRefs() {
   singleRunning.value = false;
   singlePlayerCell.value = 1;
   singleCurrentRoll.value = null;
   singleResult.value = null;
   singleEvents.value = [];
+  singleStepState.value = null;
   multiResult.value = null;
 }
 
@@ -192,6 +209,7 @@ function loadSimulationResults(mapId) {
   singleCurrentRoll.value = null;
   singleResult.value = cached.singleResult;
   singleEvents.value = cached.singleEvents ? cached.singleEvents.slice() : [];
+  singleStepState.value = cached.singleStepState || null;
   multiResult.value = cached.multiResult;
 }
 
@@ -200,6 +218,7 @@ function persistSimulationResults() {
     singlePlayerCell: singlePlayerCell.value,
     singleResult: singleResult.value,
     singleEvents: singleEvents.value.slice(),
+    singleStepState: singleStepState.value,
     multiResult: multiResult.value,
   };
 }
@@ -760,6 +779,7 @@ async function runSingleSimulation() {
   const token = ++simulationToken;
   const map = currentMap.value;
   const state = createSimulationState(map);
+  singleStepState.value = state;
   singleRunning.value = true;
   singlePlayerCell.value = 1;
   singleCurrentRoll.value = null;
@@ -777,6 +797,25 @@ async function runSingleSimulation() {
   singleResult.value = completeSimulation(state);
   singleCurrentRoll.value = null;
   singleRunning.value = false;
+  persistSimulationResults();
+}
+
+function stepSingleSimulation() {
+  if (singleRunning.value) return;
+  const map = currentMap.value;
+  if (!singleStepState.value || singleStepState.value.position >= singleStepState.value.finish) {
+    singleStepState.value = createSimulationState(map);
+    singlePlayerCell.value = 1;
+    singleCurrentRoll.value = null;
+    singleResult.value = null;
+    singleEvents.value = [];
+  }
+  const state = singleStepState.value;
+  const event = performSimulationRoll(state, map);
+  singleCurrentRoll.value = event.roll;
+  singlePlayerCell.value = event.final;
+  singleEvents.value = state.events.slice();
+  singleResult.value = completeSimulation(state);
   persistSimulationResults();
 }
 
@@ -1063,6 +1102,14 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
               </div>
             </div>
           </div>
+          <aside class="map-info-panel">
+            <div class="map-info-title">地图信息</div>
+            <div class="map-info-row"><span>盾牌</span><strong>{{ mapStats.shields }}</strong></div>
+            <div class="map-info-row"><span>骰子</span><strong>{{ mapStats.dice }}</strong></div>
+            <div class="map-info-row"><span>奖励格</span><strong>{{ mapStats.rewards }}</strong></div>
+            <div class="map-info-row"><span>蛇总跨度</span><strong>{{ mapStats.snakeSpan }}</strong></div>
+            <div class="map-info-row"><span>梯子总跨度</span><strong>{{ mapStats.ladderSpan }}</strong></div>
+          </aside>
         </div>
         <div v-else class="empty-map-area">
           <Icon type="ios-map-outline" />
@@ -1076,6 +1123,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
           <Button type="primary" icon="md-play" :loading="singleRunning" @click="runSingleSimulation">
             {{ singleRunning ? "运行中" : "运行一次" }}
           </Button>
+          <Button icon="md-skip-forward" :disabled="singleRunning" @click="stepSingleSimulation">单步模拟</Button>
         </div>
         <Card class="simulation-card" dis-hover>
           <div class="simulation-board-stage">
@@ -1376,8 +1424,35 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 
 .map-area-content {
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
   min-height: 635px;
+}
+
+.map-info-panel {
+  flex: 0 0 160px;
+  padding: 8px 12px;
+  border-left: 1px solid #e8eaec;
+  color: #515a6e;
+}
+
+.map-info-title {
+  margin-bottom: 10px;
+  color: #17233c;
+  font-weight: 600;
+}
+
+.map-info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.map-info-row strong {
+  color: #17233c;
+  font-weight: 600;
 }
 
 .map-tools {
@@ -1415,6 +1490,8 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 }
 
 .board-stage {
+  flex: 1;
+  min-width: 0;
   display: flex;
   justify-content: center;
   padding: 0 8px 8px;
@@ -1565,6 +1642,16 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   .map-list-card,
   .map-area-card {
     min-height: auto;
+  }
+
+  .map-area-content {
+    flex-direction: column;
+  }
+
+  .map-info-panel {
+    width: 100%;
+    border-top: 1px solid #e8eaec;
+    border-left: 0;
   }
 
   .map-tools {

@@ -50,35 +50,35 @@ const boardAssets = {
 };
 
 const snakeAssets = {
-  "1x2": [
-    ["snakes/2x1_1.png", 87],
+  "2x2": [
+    ["snakes/2x2_1.png", 67],
   ],
   "2x3": [
-    ["snakes/2x3_1.png", 83],
-    ["snakes/2x3_2.png", 91],
+    ["snakes/2x3_1.png", 77],
+    ["snakes/2x3_2.png", 72],
   ],
   "2x4": [
-    ["snakes/2x4_1.png", 104],
-    ["snakes/2x4_2.png", 106],
-    ["snakes/2x4_3.png", 104],
+    ["snakes/2x4_1.png", 84],
+    ["snakes/2x4_2.png", 85],
+    ["snakes/2x4_3.png", 84],
   ],
   "2x5": [
-    ["snakes/2x5_1.png", 105],
+    ["snakes/2x5_1.png", 95],
   ],
   "3x3": [
-    ["snakes/3x3_1.png", 122],
-    ["snakes/3x3_2.png", 122],
-    ["snakes/3x3_3.png", 119],
+    ["snakes/3x3_1.png", 94],
+    ["snakes/3x3_2.png", 97],
+    ["snakes/3x3_3.png", 96],
   ],
   "3x4": [
-    ["snakes/3x4_1.png", 106],
-    ["snakes/3x4_2.png", 106],
+    ["snakes/3x4_1.png", 88],
+    ["snakes/3x4_2.png", 89],
   ],
   "3x5": [
-    ["snakes/3x5_1.png", 102],
-    ["snakes/3x5_2.png", 103],
-    ["snakes/3x5_3.png", 105],
-    ["snakes/3x5_4.png", 107],
+    ["snakes/3x5_1.png", 95],
+    ["snakes/3x5_2.png", 95],
+    ["snakes/3x5_3.png", 96],
+    ["snakes/3x5_4.png", 93],
   ],
 };
 

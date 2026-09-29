@@ -25,6 +25,8 @@ const singleResult = ref(null);
 const singleEvents = ref([]);
 const singleStepState = ref(null);
 const multiRounds = ref(2000);
+const maxSnakeDropsPerSnake = ref(1);
+const maxLadderSnakeDiff = ref(1);
 const multiResult = ref(null);
 const showMultiChart = ref(false);
 const chartSelectedMetrics = ref([]);
@@ -715,7 +717,7 @@ function createMetric(label, values) {
   return { label, average, min, max, median, q1, q3, stddev, p90, p95, nonZeroRate };
 }
 
-function createSimulationState(map) {
+function createSimulationState(map, constraints = {}) {
   return {
     position: 1,
     finish: map.size * map.size,
@@ -730,30 +732,66 @@ function createSimulationState(map) {
     rewardHits: {},
     snakeHits: 0,
     snakeDrops: 0,
+    snakeDropsByHead: {},
     ladders: 0,
     events: [],
+    constraints,
   };
 }
 
+function getSimulationConstraints() {
+  return {
+    maxSnakeDropsPerSnake: Math.max(0, Math.round(maxSnakeDropsPerSnake.value || 0)),
+    maxLadderSnakeDiff: Math.max(0, Math.round(maxLadderSnakeDiff.value || 0)),
+  };
+}
+
+function isSnakeConstraintBlocked(state, snake) {
+  const { maxSnakeDropsPerSnake, maxLadderSnakeDiff } = state.constraints;
+  return (Number.isFinite(maxSnakeDropsPerSnake) && (state.snakeDropsByHead[snake.head] || 0) >= maxSnakeDropsPerSnake)
+    || (Number.isFinite(maxLadderSnakeDiff) && state.snakeHits - state.ladders >= maxLadderSnakeDiff);
+}
+
+function isLadderConstraintBlocked(state) {
+  const { maxLadderSnakeDiff } = state.constraints;
+  return Number.isFinite(maxLadderSnakeDiff) && state.ladders - state.snakeHits >= maxLadderSnakeDiff;
+}
+
+function isSnakePityBlocked(state, map, landing) {
+  return map.snakes.length > 0 && state.snakeDrops === map.snakes.length && map.snakes.some((pair) => pair.head === landing);
+}
+
+function isRestrictedLanding(state, map, roll) {
+  const landing = Math.min(state.position + roll, state.finish);
+  const snake = map.snakes.find((pair) => pair.head === landing);
+  const ladder = map.ladders.find((pair) => pair.bottom === landing);
+  return isSnakePityBlocked(state, map, landing)
+    || (snake && isSnakeConstraintBlocked(state, snake))
+    || (ladder && isLadderConstraintBlocked(state));
+}
+
 function rollSimulationDice(state, map) {
-  let rolls = [1, 2, 3, 4, 5, 6];
+  const allRolls = [1, 2, 3, 4, 5, 6];
+  const safeRolls = allRolls.filter((roll) => !isRestrictedLanding(state, map, roll));
+  const rolls = safeRolls.length ? safeRolls : allRolls;
   let protectedRoll = false;
-  if (map.snakes.length > 0 && state.snakeDrops === map.snakes.length) {
-    const snakeHeads = new Set(map.snakes.map((pair) => pair.head));
-    const safeRolls = rolls.filter((roll) => !snakeHeads.has(Math.min(state.position + roll, state.finish)));
-    if (safeRolls.length) {
-      rolls = safeRolls;
-      protectedRoll = true;
-    }
-  }
+  const hasPityRestriction = allRolls.some((roll) => isSnakePityBlocked(state, map, Math.min(state.position + roll, state.finish)));
+  const hasConstraintRestriction = allRolls.some((roll) => {
+    const landing = Math.min(state.position + roll, state.finish);
+    const snake = map.snakes.find((pair) => pair.head === landing);
+    const ladder = map.ladders.find((pair) => pair.bottom === landing);
+    return (snake && isSnakeConstraintBlocked(state, snake)) || (ladder && isLadderConstraintBlocked(state));
+  });
+  protectedRoll = safeRolls.length > 0 && (hasPityRestriction || hasConstraintRestriction);
   return {
     roll: rolls[Math.floor(Math.random() * rolls.length)],
     protectedRoll,
+    hasConstraintRestriction,
   };
 }
 
 function performSimulationRoll(state, map) {
-  const { roll, protectedRoll } = rollSimulationDice(state, map);
+  const { roll, protectedRoll, hasConstraintRestriction } = rollSimulationDice(state, map);
   const from = state.position;
   const landing = Math.min(from + roll, state.finish);
   state.rolls.push(roll);
@@ -763,7 +801,9 @@ function performSimulationRoll(state, map) {
     const snake = map.snakes.find((pair) => pair.head === landing);
     const ladder = map.ladders.find((pair) => pair.bottom === landing);
     const reward = map.cells[landing];
-    if (snake) {
+    const snakeBlocked = snake && isSnakeConstraintBlocked(state, snake);
+    const ladderBlocked = ladder && isLadderConstraintBlocked(state);
+    if (snake && !snakeBlocked) {
       state.snakeHits += 1;
       if (state.shields > 0) {
         state.shields -= 1;
@@ -772,12 +812,17 @@ function performSimulationRoll(state, map) {
       } else {
         state.position = snake.tail;
         state.snakeDrops += 1;
+        state.snakeDropsByHead[snake.head] = (state.snakeDropsByHead[snake.head] || 0) + 1;
         effect = `触发蛇，退到 ${snake.tail}`;
       }
-    } else if (ladder) {
+    } else if (ladder && !ladderBlocked) {
       state.position = ladder.top;
       state.ladders += 1;
       effect = `触发梯子，前进到 ${ladder.top}`;
+    } else if (snakeBlocked) {
+      effect = "达到蛇梯限制，本次不触发蛇";
+    } else if (ladderBlocked) {
+      effect = "达到蛇梯限制，本次不触发梯子";
     } else if (typeof reward === "number") {
       state.items += reward;
       state.rewardLandings += 1;
@@ -804,7 +849,7 @@ function performSimulationRoll(state, map) {
     landing,
     final: state.position,
     path: state.position === landing ? `${from} → ${landing}` : `${from} → ${landing} → ${state.position}`,
-    effect: protectedRoll ? `极值保底；${effect}` : effect,
+    effect: protectedRoll && hasConstraintRestriction ? `批量限制；${effect}` : (protectedRoll ? `极值保底；${effect}` : effect),
   };
   state.events.push(event);
   return event;
@@ -823,15 +868,17 @@ function completeSimulation(state) {
     rewardHits: { ...state.rewardHits },
     snakeHits: state.snakeHits,
     snakeDrops: state.snakeDrops,
+    snakeDropsByHead: { ...state.snakeDropsByHead },
     ladders: state.ladders,
+    constraints: { ...state.constraints },
     rollStats: summarize(state.rolls),
     rolls: state.rolls.slice(),
     events: state.events.slice(),
   };
 }
 
-function runSimulation(map) {
-  const state = createSimulationState(map);
+function runSimulation(map, constraints) {
+  const state = createSimulationState(map, constraints);
   while (state.position < state.finish) performSimulationRoll(state, map);
   return completeSimulation(state);
 }
@@ -869,7 +916,7 @@ function wait(ms) {
 async function runSingleSimulation() {
   const token = ++simulationToken;
   const map = currentMap.value;
-  const state = createSimulationState(map);
+  const state = createSimulationState(map, getSimulationConstraints());
   singleStepState.value = state;
   singleRunning.value = true;
   singlePlayerCell.value = 1;
@@ -895,7 +942,7 @@ function stepSingleSimulation() {
   if (singleRunning.value) return;
   const map = currentMap.value;
   if (!singleStepState.value || singleStepState.value.position >= singleStepState.value.finish) {
-    singleStepState.value = createSimulationState(map);
+    singleStepState.value = createSimulationState(map, getSimulationConstraints());
     singlePlayerCell.value = 1;
     singleCurrentRoll.value = null;
     singleResult.value = null;
@@ -913,10 +960,12 @@ function stepSingleSimulation() {
 function runMultipleSimulation() {
   const count = Math.max(1, Math.round(multiRounds.value || 1));
   const map = currentMap.value;
-  const runs = Array.from({ length: count }, () => runSimulation(map));
+  const constraints = getSimulationConstraints();
+  const runs = Array.from({ length: count }, () => runSimulation(map, constraints));
   const rewardRuns = runs.map((run) => numericRewardCounts(run.rewardHits, map));
   multiResult.value = {
     rounds: count,
+    constraints,
     runs,
     metrics: [
       createMetric("消耗骰子", runs.map((run) => run.consumedDice)),
@@ -948,6 +997,7 @@ function downloadMultiRawData() {
     generatedAt: new Date().toISOString(),
     map: serializeMap(currentMap.value),
     rounds: multiResult.value.rounds,
+    constraints: multiResult.value.constraints,
     metrics: multiResult.value.metrics,
     runs: multiResult.value.runs,
   };
@@ -1238,6 +1288,12 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 
         <TabPane label="单次模拟" name="single">
         <div class="tab-actions">
+          <div class="simulation-constraint-controls">
+            <span>单条蛇后退上限</span>
+            <InputNumber v-model="maxSnakeDropsPerSnake" :min="0" :max="100" :step="1" />
+            <span>蛇梯触发差值上限</span>
+            <InputNumber v-model="maxLadderSnakeDiff" :min="0" :max="100" :step="1" />
+          </div>
           <Button type="primary" icon="md-play" :loading="singleRunning" @click="runSingleSimulation">
             {{ singleRunning ? "运行中" : "运行一次" }}
           </Button>
@@ -1296,6 +1352,10 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
           <div class="multi-run-controls">
             <span>运行轮数</span>
             <InputNumber v-model="multiRounds" :min="1" :max="10000" :step="1" />
+            <span>单条蛇后退上限</span>
+            <InputNumber v-model="maxSnakeDropsPerSnake" :min="0" :max="100" :step="1" />
+            <span>蛇梯触发差值上限</span>
+            <InputNumber v-model="maxLadderSnakeDiff" :min="0" :max="100" :step="1" />
             <Button type="primary" icon="md-play" @click="runMultipleSimulation">运行</Button>
             <Button icon="md-download" :disabled="!multiResult || !multiResult.runs" @click="downloadMultiRawData">下载原始数据</Button>
             <Button icon="md-stats" :disabled="!multiResult" @click="openMultiChart">图表显示</Button>
@@ -1303,7 +1363,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
         </div>
         <Card class="simulation-card" dis-hover>
           <div v-if="multiResult" class="simulation-summary">
-            <div class="multi-result-meta">模拟轮数：{{ multiResult.rounds }}</div>
+            <div class="multi-result-meta">模拟轮数：{{ multiResult.rounds }}；单条蛇后退上限：{{ multiResult.constraints?.maxSnakeDropsPerSnake ?? '-' }}；蛇梯触发差值上限：{{ multiResult.constraints?.maxLadderSnakeDiff ?? '-' }}</div>
             <Table :columns="multiStatColumns" :data="multiResult.metrics" size="small" border />
           </div>
           <div v-else class="simulation-empty">点击运行，查看多轮统计结果</div>
@@ -1421,17 +1481,17 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   padding: 0;
 }
 
-.multi-run-controls {
+.multi-run-controls,
+.simulation-constraint-controls {
   display: flex;
   align-items: center;
-}
-
-.multi-run-controls {
+  flex-wrap: wrap;
   gap: 8px;
   font-weight: 400;
 }
 
-.multi-run-controls .ivu-input-number {
+.multi-run-controls .ivu-input-number,
+.simulation-constraint-controls .ivu-input-number {
   width: 90px;
 }
 

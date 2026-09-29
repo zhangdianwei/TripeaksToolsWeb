@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
-import { Button, Card, Icon, InputNumber, Message, Table, TabPane, Tabs, Upload } from "view-ui-plus";
+import { Button, Card, Checkbox, CheckboxGroup, Icon, InputNumber, Message, Modal, Table, TabPane, Tabs, Upload } from "view-ui-plus";
 
 const sizes = [7, 8, 9];
 const autoSaveKey = "snakes_ladders_maps_autosave";
@@ -26,6 +26,8 @@ const singleEvents = ref([]);
 const singleStepState = ref(null);
 const multiRounds = ref(2000);
 const multiResult = ref(null);
+const showMultiChart = ref(false);
+const chartSelectedMetrics = ref([]);
 const simulationCache = reactive({});
 let simulationToken = 0;
 
@@ -38,10 +40,67 @@ const singleColumns = [
 
 const multiStatColumns = [
   { title: "指标", key: "label", width: 120 },
-  { title: "平均", key: "average", width: 100 },
-  { title: "最小", key: "min", width: 100 },
-  { title: "最大", key: "max", width: 100 },
+  { title: "平均", key: "average", width: 82 },
+  { title: "中位数", key: "median", width: 82 },
+  { title: "Q1", key: "q1", width: 72 },
+  { title: "Q3", key: "q3", width: 72 },
+  { title: "标准差", key: "stddev", width: 82 },
+  { title: "P90", key: "p90", width: 72 },
+  { title: "P95", key: "p95", width: 72 },
+  { title: "最小", key: "min", width: 72 },
+  { title: "最大", key: "max", width: 72 },
+  { title: "非零率(%)", key: "nonZeroRate", width: 92 },
 ];
+
+const chartLineColors = ["#2d8cf0", "#19be6b", "#ff9900", "#ed4014", "#9c27b0", "#00a2ae", "#c77900", "#5b5b5b", "#8bc34a"];
+const selectedChartMetrics = computed(() => (multiResult.value?.metrics || []).filter((metric) => chartSelectedMetrics.value.includes(metric.label)));
+const chartRuns = computed(() => {
+  const map = currentMap.value;
+  if (!map || !multiResult.value?.runs) return [];
+  return multiResult.value.runs.map((run, index) => {
+    const rewards = numericRewardCounts(run.rewardHits, map);
+    return {
+      round: index + 1,
+      values: {
+        "消耗骰子": run.consumedDice,
+        "获得骰子": run.extraDice,
+        "获得盾牌": run.shieldsGained,
+        "消耗盾牌": run.shieldsUsed,
+        "奖励1": rewards[1],
+        "奖励2": rewards[2],
+        "奖励3": rewards[3],
+        "触发蛇次数": run.snakeHits,
+        "触发梯子次数": run.ladders,
+      },
+    };
+  });
+});
+const chartMaxValue = computed(() => Math.max(1, ...chartRuns.value.flatMap((run) => selectedChartMetrics.value.map((metric) => run.values[metric.label] || 0))));
+const chartTicks = computed(() => Array.from({ length: 6 }, (_, index) => ({
+  value: Number((chartMaxValue.value * index / 5).toFixed(2)),
+  y: 304 - index * 56,
+})));
+const chartLines = computed(() => {
+  const total = chartRuns.value.length;
+  const x = (index) => total <= 1 ? 495 : 70 + index / (total - 1) * 850;
+  return selectedChartMetrics.value.map((metric, index) => {
+    const values = chartRuns.value.map((run) => run.values[metric.label] || 0);
+    const median = summarize(values).median;
+    return {
+      label: metric.label,
+      color: chartLineColors[index % chartLineColors.length],
+      points: values.map((value, runIndex) => `${x(runIndex)},${304 - value / chartMaxValue.value * 280}`).join(" "),
+      median,
+      medianY: 304 - median / chartMaxValue.value * 280,
+    };
+  });
+});
+const chartXAxisLabels = computed(() => {
+  const total = chartRuns.value.length;
+  if (!total) return [];
+  const indices = [...new Set([0, Math.floor((total - 1) / 2), total - 1])];
+  return indices.map((index) => ({ round: chartRuns.value[index].round, x: total <= 1 ? 495 : 70 + index / (total - 1) * 850 }));
+});
 
 const boardAssets = {
   7: "/snakes_ladders/snakes_ladders_qipan7x7.png",
@@ -196,6 +255,8 @@ function clearSimulationRefs() {
   singleEvents.value = [];
   singleStepState.value = null;
   multiResult.value = null;
+  chartSelectedMetrics.value = [];
+  showMultiChart.value = false;
 }
 
 function loadSimulationResults(mapId) {
@@ -626,20 +687,32 @@ function pairImageStyle(pair, type) {
 }
 
 function summarize(values) {
-  if (!values.length) return { average: 0, min: 0, max: 0, median: 0 };
+  if (!values.length) return { average: 0, min: 0, max: 0, median: 0, q1: 0, q3: 0, stddev: 0, p90: 0, p95: 0, nonZeroRate: 0 };
   const sorted = values.slice().sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const percentile = (ratio) => {
+    const index = (sorted.length - 1) * ratio;
+    const lower = Math.floor(index);
+    const upper = Math.ceil(index);
+    return Number((sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower)).toFixed(2));
+  };
   return {
-    average: Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)),
+    average: Number(average.toFixed(2)),
     min: sorted[0],
     max: sorted[sorted.length - 1],
-    median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2,
+    median: percentile(0.5),
+    q1: percentile(0.25),
+    q3: percentile(0.75),
+    stddev: Number(Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length).toFixed(2)),
+    p90: percentile(0.9),
+    p95: percentile(0.95),
+    nonZeroRate: Number((values.filter((value) => value > 0).length / values.length * 100).toFixed(2)),
   };
 }
 
 function createMetric(label, values) {
-  const { average, min, max } = summarize(values);
-  return { label, average, min, max };
+  const { average, min, max, median, q1, q3, stddev, p90, p95, nonZeroRate } = summarize(values);
+  return { label, average, min, max, median, q1, q3, stddev, p90, p95, nonZeroRate };
 }
 
 function createSimulationState(map) {
@@ -844,6 +917,7 @@ function runMultipleSimulation() {
   const rewardRuns = runs.map((run) => numericRewardCounts(run.rewardHits, map));
   multiResult.value = {
     rounds: count,
+    runs,
     metrics: [
       createMetric("消耗骰子", runs.map((run) => run.consumedDice)),
       createMetric("获得骰子", runs.map((run) => run.extraDice)),
@@ -856,7 +930,33 @@ function runMultipleSimulation() {
       createMetric("触发梯子次数", runs.map((run) => run.ladders)),
     ],
   };
+  chartSelectedMetrics.value = multiResult.value.metrics.map((metric) => metric.label);
   persistSimulationResults();
+}
+
+function openMultiChart() {
+  if (!multiResult.value) return;
+  if (!chartSelectedMetrics.value.length) chartSelectedMetrics.value = multiResult.value.metrics.map((metric) => metric.label);
+  showMultiChart.value = true;
+}
+
+function downloadMultiRawData() {
+  if (!multiResult.value?.runs?.length) return;
+  const data = {
+    version: 1,
+    type: "snakes_ladders_multi_simulation",
+    generatedAt: new Date().toISOString(),
+    map: serializeMap(currentMap.value),
+    rounds: multiResult.value.rounds,
+    metrics: multiResult.value.metrics,
+    runs: multiResult.value.runs,
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${currentMap.value.name || "蛇梯地图"}_多次模拟原始数据.json`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function handleTabChange(name) {
@@ -1197,6 +1297,8 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
             <span>运行轮数</span>
             <InputNumber v-model="multiRounds" :min="1" :max="10000" :step="1" />
             <Button type="primary" icon="md-play" @click="runMultipleSimulation">运行</Button>
+            <Button icon="md-download" :disabled="!multiResult || !multiResult.runs" @click="downloadMultiRawData">下载原始数据</Button>
+            <Button icon="md-stats" :disabled="!multiResult" @click="openMultiChart">图表显示</Button>
           </div>
         </div>
         <Card class="simulation-card" dis-hover>
@@ -1208,6 +1310,36 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
         </Card>
         </TabPane>
       </Tabs>
+      <Modal v-model="showMultiChart" title="多次模拟变化图" width="1000" :footer-hide="true">
+        <div class="chart-dialog">
+          <div class="chart-options-title">选择指标</div>
+          <CheckboxGroup v-model="chartSelectedMetrics" class="chart-metric-options">
+            <Checkbox v-for="metric in multiResult?.metrics || []" :key="metric.label" :label="metric.label">{{ metric.label }}</Checkbox>
+          </CheckboxGroup>
+          <div v-if="chartLines.length" class="line-chart-wrap">
+            <svg class="line-chart" viewBox="0 0 960 380" role="img" aria-label="多次模拟指标变化图">
+              <g v-for="tick in chartTicks" :key="tick.y">
+                <line class="line-chart-grid" x1="70" :y1="tick.y" x2="920" :y2="tick.y" />
+                <text class="line-chart-y-label" x="62" :y="tick.y + 4">{{ tick.value }}</text>
+              </g>
+              <line class="line-chart-axis" x1="70" y1="24" x2="70" y2="304" />
+              <line class="line-chart-axis" x1="70" y1="304" x2="920" y2="304" />
+              <g v-for="line in chartLines" :key="line.label">
+                <polyline class="line-chart-line" :points="line.points" :stroke="line.color" />
+                <line class="line-chart-median" x1="70" :y1="line.medianY" x2="920" :y2="line.medianY" :stroke="line.color" />
+              </g>
+              <g v-for="label in chartXAxisLabels" :key="label.round">
+                <text class="line-chart-x-label" :x="label.x" y="328">第{{ label.round }}轮</text>
+              </g>
+            </svg>
+            <div class="chart-legend">
+              <span v-for="line in chartLines" :key="line.label"><i class="chart-legend-line" :style="{ background: line.color }" />{{ line.label }}（实线）</span>
+              <span><i class="chart-legend-line median" />同色虚线为中位数</span>
+            </div>
+          </div>
+          <div v-else class="chart-empty">请选择至少一个指标</div>
+        </div>
+      </Modal>
     </div>
   </div>
 </template>
@@ -1366,6 +1498,103 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   margin-bottom: 8px;
   color: #17233c;
   font-weight: 600;
+}
+
+.chart-dialog {
+  min-height: 400px;
+}
+
+.chart-options-title {
+  margin-bottom: 8px;
+  color: #17233c;
+  font-weight: 600;
+}
+
+.chart-metric-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8eaec;
+}
+
+.chart-metric-options :deep(.ivu-checkbox-wrapper) {
+  margin-right: 0;
+}
+
+.line-chart-wrap {
+  margin-top: 12px;
+}
+
+.line-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.line-chart-grid {
+  stroke: #e8eaec;
+  stroke-width: 1;
+}
+
+.line-chart-axis {
+  stroke: #808695;
+  stroke-width: 1;
+}
+
+.line-chart-line {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.line-chart-median {
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
+}
+
+.line-chart-y-label,
+.line-chart-x-label {
+  font-family: inherit;
+}
+
+.line-chart-y-label {
+  fill: #808695;
+  font-size: 11px;
+  text-anchor: end;
+}
+
+.line-chart-x-label {
+  fill: #515a6e;
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 18px;
+  color: #515a6e;
+  font-size: 12px;
+}
+
+.chart-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chart-legend-line {
+  width: 18px;
+  height: 2px;
+}
+
+.chart-legend-line.median {
+  height: 0;
+  border-top: 2px dashed #808695;
 }
 
 .roll-stats {

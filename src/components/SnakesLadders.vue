@@ -2,9 +2,18 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { Button, Card, Checkbox, CheckboxGroup, Icon, InputNumber, Message, Modal, Table, TabPane, Tabs, Upload } from "view-ui-plus";
 
-const sizes = [7, 8, 9];
+const stages = [1, 2, 3, 4, 5, 6, 7];
+const stageSizes = {
+  1: 7,
+  2: 7,
+  3: 8,
+  4: 8,
+  5: 9,
+  6: 9,
+  7: 9,
+};
 const autoSaveKey = "snakes_ladders_maps_autosave";
-const activeMapId = ref("7-1");
+const activeMapId = ref("stage1-1");
 const selectedOperation = ref("select");
 const selectedRewardType = ref(1);
 const selectedCell = ref(null);
@@ -12,7 +21,8 @@ const pendingEndpoint = ref(null);
 const boardFrame = ref(null);
 const dragState = ref(null);
 let suppressCellClick = false;
-const rewardOptions = [1, 2, 3, "dice", "shield"];
+const numericRewardOptions = Array.from({ length: 10 }, (_, index) => index + 1);
+const rewardOptions = [...numericRewardOptions, "dice", "shield"];
 const rewardAssets = {
   dice: "/snakes_ladders/touzi.png",
   shield: "/snakes_ladders/shield.png",
@@ -54,7 +64,7 @@ const multiStatColumns = [
   { title: "非零率(%)", key: "nonZeroRate", width: 92 },
 ];
 
-const chartLineColors = ["#2d8cf0", "#19be6b", "#ff9900", "#ed4014", "#9c27b0", "#00a2ae", "#c77900", "#5b5b5b", "#8bc34a"];
+const chartLineColors = ["#2d8cf0", "#19be6b", "#ff9900", "#ed4014", "#9c27b0", "#00a2ae", "#c77900", "#5b5b5b", "#8bc34a", "#795548", "#607d8b", "#e91e63", "#3f51b5", "#009688", "#ffc107", "#673ab7", "#ff5722", "#4caf50"];
 const selectedChartMetrics = computed(() => (multiResult.value?.metrics || []).filter((metric) => chartSelectedMetrics.value.includes(metric.label)));
 const chartRuns = computed(() => {
   const map = currentMap.value;
@@ -68,9 +78,7 @@ const chartRuns = computed(() => {
         "获得骰子": run.extraDice,
         "获得盾牌": run.shieldsGained,
         "消耗盾牌": run.shieldsUsed,
-        "奖励1": rewards[1],
-        "奖励2": rewards[2],
-        "奖励3": rewards[3],
+        ...Object.fromEntries(numericRewardOptions.map((reward) => [`奖励${reward}`, rewards[reward]])),
         "触发蛇次数": run.snakeHits,
         "触发梯子次数": run.ladders,
       },
@@ -179,10 +187,12 @@ const boardBounds = {
   },
 };
 
-function createMap(size, index) {
+function createMap(stage, index) {
+  const size = stageSizes[stage];
   return {
-    id: `${size}-${index}`,
+    id: `stage${stage}-${index}`,
     name: `地图${index}`,
+    stage,
     size,
     cells: {},
     snakes: [],
@@ -196,21 +206,22 @@ const randomCounts = {
   9: { snakes: 4, ladders: 4, rewards: 10 },
 };
 
-function createRandomMap(size, index) {
-  const map = createMap(size, index);
+function createRandomMap(stage, index) {
+  const size = stageSizes[stage];
+  const map = createMap(stage, index);
   const config = randomCounts[size];
-  const rewardTypes = shuffle(Array.from({ length: config.rewards }, (_, i) => rewardOptions[i % rewardOptions.length]));
+  const rewardTypes = shuffle(rewardOptions).slice(0, config.rewards);
   return Object.assign(map, buildRandomLayout(size, config.snakes, config.ladders, rewardTypes));
 }
 
-const maps = reactive({
-  7: [createRandomMap(7, 1), createRandomMap(7, 2)],
-  8: [createRandomMap(8, 1), createRandomMap(8, 2)],
-  9: [createRandomMap(9, 1), createRandomMap(9, 2)],
+const maps = reactive({});
+const nextMapIndex = reactive({});
+stages.forEach((stage) => {
+  maps[stage] = [createRandomMap(stage, 1), createRandomMap(stage, 2)];
+  nextMapIndex[stage] = 3;
 });
 
-const nextMapIndex = reactive({ 7: 3, 8: 3, 9: 3 });
-const currentMap = computed(() => sizes.flatMap((size) => maps[size]).find((map) => map.id === activeMapId.value));
+const currentMap = computed(() => stages.flatMap((stage) => maps[stage]).find((map) => map.id === activeMapId.value));
 const activeSize = computed(() => currentMap.value?.size || 7);
 const boardRows = computed(() => {
   const size = activeSize.value;
@@ -481,22 +492,22 @@ function handleCellClick(cell) {
   selectCell(cell);
 }
 
-function newMap(size) {
-  const index = nextMapIndex[size]++;
-  const map = createRandomMap(size, index);
-  maps[size].push(map);
+function newMap(stage) {
+  const index = nextMapIndex[stage]++;
+  const map = createRandomMap(stage, index);
+  maps[stage].push(map);
   activeMapId.value = map.id;
   selectedCell.value = null;
   pendingEndpoint.value = null;
   resetSimulationResults();
 }
 
-function removeMap(size, mapId) {
-  const index = maps[size].findIndex((map) => map.id === mapId);
-  maps[size].splice(index, 1);
+function removeMap(stage, mapId) {
+  const index = maps[stage].findIndex((map) => map.id === mapId);
+  maps[stage].splice(index, 1);
   delete simulationCache[mapId];
   if (activeMapId.value !== mapId) return;
-  const next = maps[size][index] || maps[size][index - 1] || sizes.flatMap((value) => maps[value])[0];
+  const next = maps[stage][index] || maps[stage][index - 1] || stages.flatMap((value) => maps[value])[0];
   activeMapId.value = next?.id || "";
   selectedCell.value = null;
   pendingEndpoint.value = null;
@@ -518,8 +529,12 @@ function setRewardType(type) {
 
 function handleKeydown(event) {
   if (activeTab.value !== "edit") return;
-  if (event.key >= "1" && event.key <= "3") {
+  if (event.key >= "1" && event.key <= "9") {
     setRewardType(Number(event.key));
+    return;
+  }
+  if (event.key === "0") {
+    setRewardType(10);
     return;
   }
   if (event.key.toLowerCase() === "q") setOperation("select");
@@ -890,7 +905,7 @@ function rewardHitRows(hits) {
 }
 
 function numericRewardCounts(hits, map) {
-  return [1, 2, 3].reduce((counts, reward) => {
+  return numericRewardOptions.reduce((counts, reward) => {
     counts[reward] = Object.entries(hits || {}).reduce(
       (total, [cell, count]) => total + (map.cells[cell] === reward ? count : 0),
       0,
@@ -972,9 +987,7 @@ function runMultipleSimulation() {
       createMetric("获得骰子", runs.map((run) => run.extraDice)),
       createMetric("获得盾牌", runs.map((run) => run.shieldsGained)),
       createMetric("消耗盾牌", runs.map((run) => run.shieldsUsed)),
-      createMetric("奖励1", rewardRuns.map((counts) => counts[1])),
-      createMetric("奖励2", rewardRuns.map((counts) => counts[2])),
-      createMetric("奖励3", rewardRuns.map((counts) => counts[3])),
+      ...numericRewardOptions.map((reward) => createMetric(`奖励${reward}`, rewardRuns.map((counts) => counts[reward]))),
       createMetric("触发蛇次数", runs.map((run) => run.snakeHits)),
       createMetric("触发梯子次数", runs.map((run) => run.ladders)),
     ],
@@ -1018,8 +1031,9 @@ function handleTabChange(name) {
 }
 
 function isValidMap(map) {
+  const stage = Number(map.stage);
   const size = map.size;
-  if (!sizes.includes(size) || !map.cells || !Array.isArray(map.snakes) || !Array.isArray(map.ladders)) return false;
+  if (!stages.includes(stage) || stageSizes[stage] !== size || !map.cells || !Array.isArray(map.snakes) || !Array.isArray(map.ladders)) return false;
   const occupied = new Set([1, size * size]);
   for (const [cellText, rewardType] of Object.entries(map.cells)) {
     const cell = Number(cellText);
@@ -1043,6 +1057,7 @@ function serializeMap(map) {
   return {
     id: map.id,
     name: map.name,
+    stage: map.stage,
     size: map.size,
     cells: map.cells,
     snakes: map.snakes,
@@ -1050,12 +1065,38 @@ function serializeMap(map) {
   };
 }
 
+function fallbackStageForSize(size) {
+  return size === 7 ? 1 : size === 8 ? 3 : size === 9 ? 5 : null;
+}
+
+function normalizeMaps(rawMaps) {
+  const groups = Object.fromEntries(stages.map((stage) => [stage, []]));
+  const sourceIds = new Map();
+  for (const rawMap of rawMaps) {
+    const rawStage = rawMap.stage == null ? null : Number(rawMap.stage);
+    const rawSize = Number(rawMap.size);
+    const stage = rawStage == null ? fallbackStageForSize(rawSize) : rawStage;
+    if (!stages.includes(stage) || (rawStage != null && stageSizes[stage] !== rawSize)) throw new Error();
+    const map = {
+      ...JSON.parse(JSON.stringify(rawMap)),
+      id: `stage${stage}-${groups[stage].length + 1}`,
+      name: rawMap.name || `地图${groups[stage].length + 1}`,
+      stage,
+      size: stageSizes[stage],
+    };
+    if (!isValidMap(map)) throw new Error();
+    groups[stage].push(map);
+    if (rawMap.id) sourceIds.set(rawMap.id, map.id);
+  }
+  return { groups, sourceIds };
+}
+
 function saveAutoState() {
   try {
     const data = {
-      version: 1,
+      version: 2,
       activeMapId: activeMapId.value,
-      maps: sizes.flatMap((size) => maps[size]).map(serializeMap),
+      maps: stages.flatMap((stage) => maps[stage]).map(serializeMap),
     };
     window.localStorage.setItem(autoSaveKey, JSON.stringify(data));
   } catch {
@@ -1067,29 +1108,22 @@ function loadAutoState() {
     const raw = window.localStorage.getItem(autoSaveKey);
     if (!raw) return;
     const data = JSON.parse(raw);
-    if (data.version !== 1 || !Array.isArray(data.maps) || !data.maps.every(isValidMap)) return;
-    for (const size of sizes) {
-      const group = data.maps.filter((map) => map.size === size).map((map, index) => ({
-        ...JSON.parse(JSON.stringify(map)),
-        id: map.id || `${size}-${index + 1}`,
-        name: map.name || `地图${index + 1}`,
-      }));
-      maps[size].splice(0, maps[size].length, ...group);
-      const indexes = group.map((map) => Number(String(map.id).split("-").pop()) || 0);
-      nextMapIndex[size] = Math.max(group.length, ...indexes) + 1;
+    if (![1, 2].includes(data.version) || !Array.isArray(data.maps)) return;
+    const { groups, sourceIds } = normalizeMaps(data.maps);
+    for (const stage of stages) {
+      maps[stage].splice(0, maps[stage].length, ...groups[stage]);
+      nextMapIndex[stage] = groups[stage].length + 1;
     }
-    const allMaps = sizes.flatMap((size) => maps[size]);
-    activeMapId.value = allMaps.some((map) => map.id === data.activeMapId)
-      ? data.activeMapId
-      : allMaps[0]?.id || "";
+    const allMaps = stages.flatMap((stage) => maps[stage]);
+    activeMapId.value = sourceIds.get(data.activeMapId) || allMaps[0]?.id || "";
   } catch {
   }
 }
 
 function exportMaps() {
   const data = {
-    version: 1,
-    maps: sizes.flatMap((size) => maps[size]).map(serializeMap),
+    version: 2,
+    maps: stages.flatMap((stage) => maps[stage]).map(serializeMap),
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
   const link = document.createElement("a");
@@ -1102,18 +1136,14 @@ function exportMaps() {
 async function importMaps(file) {
   try {
     const data = JSON.parse(await file.text());
-    if (data.version !== 1 || !Array.isArray(data.maps) || !data.maps.every(isValidMap)) throw new Error();
-    for (const size of sizes) {
-      const group = data.maps.filter((map) => map.size === size).map((map, index) => ({
-        ...JSON.parse(JSON.stringify(map)),
-        id: `${size}-${index + 1}`,
-        name: map.name || `地图${index + 1}`,
-      }));
-      maps[size].splice(0, maps[size].length, ...group);
-      nextMapIndex[size] = group.length + 1;
+    if (![1, 2].includes(data.version) || !Array.isArray(data.maps)) throw new Error();
+    const { groups } = normalizeMaps(data.maps);
+    for (const stage of stages) {
+      maps[stage].splice(0, maps[stage].length, ...groups[stage]);
+      nextMapIndex[stage] = groups[stage].length + 1;
     }
     Object.keys(simulationCache).forEach((mapId) => delete simulationCache[mapId]);
-    const firstMap = sizes.flatMap((size) => maps[size])[0];
+    const firstMap = stages.flatMap((stage) => maps[stage])[0];
     activeMapId.value = firstMap?.id || "";
     selectedCell.value = null;
     pendingEndpoint.value = null;
@@ -1139,7 +1169,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
     <div class="editor-toolbar">
       <div>
         <div class="editor-title">蛇梯地图编辑器</div>
-        <div class="editor-subtitle">按地图尺寸管理多张布局</div>
+        <div class="editor-subtitle">按 Stage 管理多张地图</div>
       </div>
       <div class="global-actions">
         <Upload accept=".json" action="" :show-upload-list="false" :before-upload="importMaps">
@@ -1152,14 +1182,14 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
     <div class="editor-layout">
       <Card class="map-list-card" dis-hover>
         <template #title>地图</template>
-        <div v-for="size in sizes" :key="size" class="map-group">
+        <div v-for="stage in stages" :key="stage" class="map-group">
           <div class="map-group-header">
-            <span>{{ size }}x{{ size }}</span>
-            <Button size="small" icon="md-add" @click="newMap(size)">新建</Button>
+            <span>Stage {{ stage }}（{{ stageSizes[stage] }}x{{ stageSizes[stage] }}）</span>
+            <Button size="small" icon="md-add" @click="newMap(stage)">新建</Button>
           </div>
-          <div v-if="maps[size].length" class="map-group-list">
+          <div v-if="maps[stage].length" class="map-group-list">
             <div
-              v-for="map in maps[size]"
+              v-for="map in maps[stage]"
               :key="map.id"
               class="map-list-item"
               :class="{ active: map.id === activeMapId }"
@@ -1171,7 +1201,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
                 size="small"
                 type="text"
                 icon="md-trash"
-                @click.stop="removeMap(size, map.id)"
+                @click.stop="removeMap(stage, map.id)"
               />
             </div>
           </div>

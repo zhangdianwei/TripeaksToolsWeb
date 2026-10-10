@@ -14,6 +14,7 @@ const stageSizes = {
 };
 const autoSaveKey = "snakes_ladders_maps_autosave";
 const activeMapId = ref("stage1-1");
+const copiedMap = ref(null);
 const selectedOperation = ref("select");
 const selectedRewardType = ref(1);
 const selectedCell = ref(null);
@@ -500,6 +501,40 @@ function newMap(stage) {
   selectedCell.value = null;
   pendingEndpoint.value = null;
   resetSimulationResults();
+}
+
+function copyMap(map) {
+  copiedMap.value = JSON.parse(JSON.stringify(serializeMap(map)));
+  Message.success("地图已复制");
+}
+
+function pasteMap(stage) {
+  if (!copiedMap.value) {
+    Message.warning("请先复制地图");
+    return;
+  }
+  if (copiedMap.value.size !== stageSizes[stage]) {
+    Message.warning("只能粘贴到相同棋盘尺寸的 Stage");
+    return;
+  }
+  const index = nextMapIndex[stage]++;
+  const map = {
+    ...JSON.parse(JSON.stringify(copiedMap.value)),
+    id: `stage${stage}-${index}`,
+    name: `地图${index}`,
+    stage,
+    size: stageSizes[stage],
+  };
+  if (!isValidMap(map)) {
+    Message.error("复制的地图数据不符合当前规则");
+    return;
+  }
+  maps[stage].push(map);
+  activeMapId.value = map.id;
+  selectedCell.value = null;
+  pendingEndpoint.value = null;
+  resetSimulationResults();
+  Message.success("地图已粘贴");
 }
 
 function removeMap(stage, mapId) {
@@ -1185,7 +1220,10 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
         <div v-for="stage in stages" :key="stage" class="map-group">
           <div class="map-group-header">
             <span>Stage {{ stage }}（{{ stageSizes[stage] }}x{{ stageSizes[stage] }}）</span>
-            <Button size="small" icon="md-add" @click="newMap(stage)">新建</Button>
+            <div class="map-group-actions">
+              <Button size="small" icon="md-add" @click="newMap(stage)">新建</Button>
+              <Button size="small" icon="md-clipboard" :disabled="!copiedMap || copiedMap.size !== stageSizes[stage]" @click="pasteMap(stage)">粘贴</Button>
+            </div>
           </div>
           <div v-if="maps[stage].length" class="map-group-list">
             <div
@@ -1196,13 +1234,23 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
               @click="selectMap(map)"
             >
               <span>{{ map.name }}</span>
-              <Button
-                class="map-delete-button"
-                size="small"
-                type="text"
-                icon="md-trash"
-                @click.stop="removeMap(stage, map.id)"
-              />
+              <span class="map-list-actions">
+                <Button
+                  size="small"
+                  type="text"
+                  icon="md-copy"
+                  title="复制地图"
+                  @click.stop="copyMap(map)"
+                />
+                <Button
+                  class="map-delete-button"
+                  size="small"
+                  type="text"
+                  icon="md-trash"
+                  title="删除地图"
+                  @click.stop="removeMap(stage, map.id)"
+                />
+              </span>
             </div>
           </div>
           <div v-else class="empty-map-list">暂无地图</div>
@@ -1724,6 +1772,13 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   color: #515a6e;
   font-size: 14px;
   font-weight: 600;
+}
+
+.map-group-actions,
+.map-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .map-group-list {

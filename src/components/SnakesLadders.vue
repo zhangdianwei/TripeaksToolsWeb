@@ -36,8 +36,10 @@ const singleResult = ref(null);
 const singleEvents = ref([]);
 const singleStepState = ref(null);
 const multiRounds = ref(2000);
-const maxSnakeDropsPerSnake = ref(1);
-const maxLadderSnakeDiff = ref(1);
+const defaultSimulationConstraints = {
+  maxSnakeDropsPerSnake: 1,
+  maxLadderSnakeDiff: 1,
+};
 const multiResult = ref(null);
 const showMultiChart = ref(false);
 const chartSelectedMetrics = ref([]);
@@ -195,6 +197,7 @@ function createMap(stage, index) {
     name: `地图${index}`,
     stage,
     size,
+    simulationConstraints: { ...defaultSimulationConstraints },
     cells: {},
     snakes: [],
     ladders: [],
@@ -223,6 +226,18 @@ stages.forEach((stage) => {
 });
 
 const currentMap = computed(() => stages.flatMap((stage) => maps[stage]).find((map) => map.id === activeMapId.value));
+const maxSnakeDropsPerSnake = computed({
+  get: () => currentMap.value?.simulationConstraints?.maxSnakeDropsPerSnake ?? defaultSimulationConstraints.maxSnakeDropsPerSnake,
+  set: (value) => {
+    if (currentMap.value) currentMap.value.simulationConstraints.maxSnakeDropsPerSnake = value;
+  },
+});
+const maxLadderSnakeDiff = computed({
+  get: () => currentMap.value?.simulationConstraints?.maxLadderSnakeDiff ?? defaultSimulationConstraints.maxLadderSnakeDiff,
+  set: (value) => {
+    if (currentMap.value) currentMap.value.simulationConstraints.maxLadderSnakeDiff = value;
+  },
+});
 const activeSize = computed(() => currentMap.value?.size || 7);
 const boardRows = computed(() => {
   const size = activeSize.value;
@@ -796,6 +811,17 @@ function getSimulationConstraints() {
   };
 }
 
+function normalizeSimulationConstraints(value, fallback = defaultSimulationConstraints) {
+  const normalize = (input, fallback) => {
+    const number = Number(input);
+    return Number.isFinite(number) ? Math.min(100, Math.max(0, Math.round(number))) : fallback;
+  };
+  return {
+    maxSnakeDropsPerSnake: normalize(value?.maxSnakeDropsPerSnake, fallback.maxSnakeDropsPerSnake),
+    maxLadderSnakeDiff: normalize(value?.maxLadderSnakeDiff, fallback.maxLadderSnakeDiff),
+  };
+}
+
 function isSnakeConstraintBlocked(state, snake) {
   const { maxSnakeDropsPerSnake, maxLadderSnakeDiff } = state.constraints;
   return (Number.isFinite(maxSnakeDropsPerSnake) && (state.snakeDropsByHead[snake.head] || 0) >= maxSnakeDropsPerSnake)
@@ -1094,6 +1120,7 @@ function serializeMap(map) {
     name: map.name,
     stage: map.stage,
     size: map.size,
+    simulationConstraints: normalizeSimulationConstraints(map.simulationConstraints),
     cells: map.cells,
     snakes: map.snakes,
     ladders: map.ladders,
@@ -1104,7 +1131,7 @@ function fallbackStageForSize(size) {
   return size === 7 ? 1 : size === 8 ? 3 : size === 9 ? 5 : null;
 }
 
-function normalizeMaps(rawMaps) {
+function normalizeMaps(rawMaps, fallbackConstraints = defaultSimulationConstraints) {
   const groups = Object.fromEntries(stages.map((stage) => [stage, []]));
   const sourceIds = new Map();
   for (const rawMap of rawMaps) {
@@ -1118,6 +1145,7 @@ function normalizeMaps(rawMaps) {
       name: rawMap.name || `地图${groups[stage].length + 1}`,
       stage,
       size: stageSizes[stage],
+      simulationConstraints: normalizeSimulationConstraints(rawMap.simulationConstraints, fallbackConstraints),
     };
     if (!isValidMap(map)) throw new Error();
     groups[stage].push(map);
@@ -1129,7 +1157,7 @@ function normalizeMaps(rawMaps) {
 function saveAutoState() {
   try {
     const data = {
-      version: 2,
+      version: 4,
       activeMapId: activeMapId.value,
       maps: stages.flatMap((stage) => maps[stage]).map(serializeMap),
     };
@@ -1143,8 +1171,9 @@ function loadAutoState() {
     const raw = window.localStorage.getItem(autoSaveKey);
     if (!raw) return;
     const data = JSON.parse(raw);
-    if (![1, 2].includes(data.version) || !Array.isArray(data.maps)) return;
-    const { groups, sourceIds } = normalizeMaps(data.maps);
+    if (![1, 2, 3, 4].includes(data.version) || !Array.isArray(data.maps)) return;
+    const fallbackConstraints = normalizeSimulationConstraints(data.simulationConstraints);
+    const { groups, sourceIds } = normalizeMaps(data.maps, fallbackConstraints);
     for (const stage of stages) {
       maps[stage].splice(0, maps[stage].length, ...groups[stage]);
       nextMapIndex[stage] = groups[stage].length + 1;
@@ -1157,7 +1186,7 @@ function loadAutoState() {
 
 function exportMaps() {
   const data = {
-    version: 2,
+    version: 4,
     maps: stages.flatMap((stage) => maps[stage]).map(serializeMap),
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
@@ -1171,8 +1200,9 @@ function exportMaps() {
 async function importMaps(file) {
   try {
     const data = JSON.parse(await file.text());
-    if (![1, 2].includes(data.version) || !Array.isArray(data.maps)) throw new Error();
-    const { groups } = normalizeMaps(data.maps);
+    if (![1, 2, 3, 4].includes(data.version) || !Array.isArray(data.maps)) throw new Error();
+    const fallbackConstraints = normalizeSimulationConstraints(data.simulationConstraints);
+    const { groups } = normalizeMaps(data.maps, fallbackConstraints);
     for (const stage of stages) {
       maps[stage].splice(0, maps[stage].length, ...groups[stage]);
       nextMapIndex[stage] = groups[stage].length + 1;

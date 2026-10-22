@@ -24,7 +24,7 @@
 
 # 体验步骤
 
-1.   浏览器打开：http://10.10.31.17:9090/
+1.   浏览器打开：http://tripeaks.ghoststudio.net/
 
 # 其他说明
 ## easy_shushu

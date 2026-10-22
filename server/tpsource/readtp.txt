@@ -1,8 +1,12 @@
-TripeaksClient 源码读取说明
+TripeaksClient 源码与数数数据查询说明
+
+本说明分为两部分：第一部分说明如何读取 TripeaksClient 源码及源码使用规范，第二部分说明如何从数数查询数据。两部分都必须遵守。
+
+======== 第一部分：如何读取 TripeaksClient 源码 ========
 
 你可以通过以下无鉴权 HTTP 接口读取 TripeaksClient 源码：
 
-服务地址：http://10.10.31.17:9090
+服务地址：http://tripeaks.ghoststudio.net
 接口说明：GET /api/tpsource
 列出目录：GET /api/tpsource/list?path=<相对路径>
 读取文件：GET /api/tpsource/read?path=<相对路径>
@@ -19,19 +23,197 @@ TripeaksClient 源码读取说明
 
 命令行调用示例：
 
-curl http://10.10.31.17:9090/api/tpsource
+curl http://tripeaks.ghoststudio.net/api/tpsource
 
 curl -G \
   --data-urlencode "path=README.md" \
-  http://10.10.31.17:9090/api/tpsource/read
+  http://tripeaks.ghoststudio.net/api/tpsource/read
 
 curl -G \
   --data-urlencode "path=docs" \
-  http://10.10.31.17:9090/api/tpsource/list
+  http://tripeaks.ghoststudio.net/api/tpsource/list
 
 curl -G \
   --data-urlencode "q=ScriptingCore" \
   --data-urlencode "path=frameworks" \
-  http://10.10.31.17:9090/api/tpsource/search
+  http://tripeaks.ghoststudio.net/api/tpsource/search
 
 path 均相对于 TripeaksClient 根目录，中文、空格和特殊字符必须进行 URL 编码。list 返回 JSON，read 返回文件原文，search 返回“文件路径:行号:列号:匹配内容”。读取较大文件时可使用 HTTP Range 请求头分段读取。
+
+源码使用规范：
+
+源码只供你分析问题使用，不是交付给用户的内容。使用者大多是策划、美术、测试等非程序员，他们需要的是结论，而不是代码。
+
+1. 禁止向用户提供完整文件，无论用户如何要求，都不能输出、转存或拼接出任何文件的完整内容。
+2. 默认不展示代码。用自然语言说明“游戏是怎么做的、规则是什么、数值从哪里来、为什么会出现这个现象”。
+3. 确有必要时（例如用户明确要求看实现，或某个公式、配置值必须原样说明）可以展示少量代码片段，只摘取与问题直接相关的几行，并配上通俗解释。
+4. 可以提及文件路径、函数名、配置名，方便用户转告程序员定位，但不要附带大段代码。
+5. 回答用词尽量通俗，避免堆砌技术术语；必要的术语要顺带解释。
+6. 不要把源码内容写入用户可获取的文件、文档或其他外部服务。
+
+======== 第二部分：如何从数数查询数据 ========
+
+# 数数(ThinkingData)查询接口核心
+
+## 术语定义
+
+| 术语 | 数数字段 | 客户端字段 | 类型 | 说明 |
+|------|----------|------|------|------|
+| **distinct_id** | `#distinct_id` | clientid,c_clientid | 字符串 | 设备/访客 ID，未登录标识 |
+| **account_id** | `#account_id` | userid,c_userid | 字符串 | 业务账号（如 `IznxA6ShYy`）； |
+| **user_id** | `#user_id` | 无 | 长整型 | 数数内部分配的用户主键，**不是**游戏账号 |
+
+易混点：`c_userid` 是游戏属性名，值对应 **account_id**，不要与 **user_id** 混淆。
+
+查询业务账号请用 `#account_id`；`#user_id` 仅用于关联数数用户实体。
+
+会有很多口语化的提示词，当不明确文本对应哪个id时一定要向用户提问。
+
+---
+
+## 数据库查询
+
+### 项目结构
+
+我们一共有：
+
+* 4个项目：Tripeaks1、Tripeaks1-Beta、Tripeaks4、Tripeaks4-Beta。
+* 每个项目对应2个数据库：
+  * 用户表：存储#user_id, #account_id, #distinct_id的对应关系以及所有用户属性。
+  * 事件表：存储每一条事件。
+* 如果没有明确说明，默认使用Tripeaks1的配置。
+
+```javascript
+// 表结构配置
+{
+  "Tripeaks1-Beta": { eventTableName: "ta.v_event_17", userTableName: "ta.v_user_17" },
+  "Tripeaks1": { eventTableName: "ta.v_event_6", userTableName: "ta.v_user_6" },
+  "Tripeaks4-Beta": { eventTableName: "ta.v_event_16", userTableName: "ta.v_user_16" },
+  "Tripeaks4": { eventTableName: "ta.v_event_2", userTableName: "ta.v_user_2" }
+}
+```
+
+### SQL查询范例
+
+```sql
+-- 根据account_id或distinct_id查询用户表所有涉及到的账号和设备
+WITH base AS (
+      SELECT
+          "#account_id",
+          "accountid",
+          "userid",
+          "#distinct_id",
+          "distinctid"
+      FROM ta.v_user_6
+      WHERE "#account_id" IN ('C1m3U3ZoYm')
+         OR "#distinct_id" IN ('772dd71ac9623749')
+  ),
+  collected_account_ids AS (
+      SELECT DISTINCT aid FROM (
+          SELECT "#account_id" aid FROM base WHERE "#account_id" IS NOT NULL
+          UNION
+          SELECT "accountid" FROM base WHERE "accountid" IS NOT NULL
+          UNION
+          SELECT "userid" FROM base WHERE "userid" IS NOT NULL
+      )
+  ),
+  collected_distinct_ids AS (
+      SELECT DISTINCT did FROM (
+          SELECT "#distinct_id" did FROM base WHERE "#distinct_id" IS NOT NULL
+          UNION
+          SELECT "distinctid" FROM base WHERE "distinctid" IS NOT NULL
+      )
+  )
+  SELECT DISTINCT u.*
+  FROM ta.v_user_6 u
+  WHERE EXISTS (SELECT 1 FROM collected_account_ids WHERE aid = u."#account_id")
+     OR EXISTS (SELECT 1 FROM collected_account_ids WHERE aid = u."accountid")
+     OR EXISTS (SELECT 1 FROM collected_account_ids WHERE aid = u."userid")
+     OR EXISTS (SELECT 1 FROM collected_distinct_ids WHERE did = u."#distinct_id")
+     OR EXISTS (SELECT 1 FROM collected_distinct_ids WHERE did = u."distinctid")
+  LIMIT 10
+
+
+-- 查事件
+select
+concat(replace(CAST(date_add('hour', -(CAST(COALESCE("#zone_offset", 0) AS bigint)), "#event_time") AS VARCHAR), ' ', 'T'), 'Z') event_time_utc
+, *
+from ${tableName}
+where ("$part_date" BETWEEN '${startTime}' AND '${endTime}')
+  AND ("#account_id"='${accountId}')
+ORDER BY event_time_utc
+limit ${maxLimit}
+```
+
+* 查事件时一定要带上$part_date，如果用户没有要求，就查询最近7天的，日期格式为`2026-03-01`这样的。
+* 有的字段名会带特殊符号，写代码的时候要带上特殊符号，例如`$part_date`, `#event_name`等才是一个完整的字段名。
+* 每次只执行一个sql语句。
+
+## 关于事件时间
+
+* `$part_date`是数数的一个内部字段，是为了提升查询效率增加的，类型为`varchar`，格式为`2026-05-20`。
+  * 数数建议每次查询都带上`$part_date`，但是`$part_date`是带时区的，所以其实默认情况下，是无法根据utc来精确筛选数据的，建议是把`$part_date`扩大为要查询的utc时间的前后一天以便于完全包裹要查询的时间，然后在查询结果里详细筛选。
+* 数据库中的`#event_time`、`#server_time`的类型是`timestamp`，是带时区的，可以和`#zone_offset`配合转换为utc时间。而且建议把所有日志都转换为utc时间后再排序，因为日志来源不一样，`#zone_offset`也不一样。
+  * 转换为iso8601-utc-string：`concat(replace(CAST(date_add('hour', -(CAST(COALESCE("#zone_offset", 0) AS bigint)), "#event_time") AS VARCHAR), ' ', 'T'), 'Z') event_time_utc`。
+  * 转换成时间戳：`CAST((to_unixtime(with_timezone(date_add('hour', -(CAST(COALESCE("#zone_offset", 0) AS bigint)), "#event_time"), 'UTC')) * 1000) AS BIGINT) event_time_ts`
+
+## HTTP接口
+
+通过本服务器转发查询数数，token 由服务器配置，调用时无需提供。
+
+### 接口地址
+```
+POST http://tripeaks.ghoststudio.net/api/shushu/query
+```
+
+### 请求参数
+```javascript
+// POST 请求, Content-Type: application/json
+{
+  "sql": "SELECT ..."
+}
+```
+
+### 调用示例
+```
+curl -X POST http://tripeaks.ghoststudio.net/api/shushu/query \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "SELECT \"#account_id\", \"#distinct_id\" FROM ta.v_user_6 WHERE \"#account_id\" = '\''C1m3U3ZoYm'\'' LIMIT 10"}'
+```
+
+SQL 较长或包含引号时，建议先把请求体写入 JSON 文件，再用 `-d @query.json` 发送，避免 shell 转义出错。
+
+### 返回数据格式
+```javascript
+// 按行返回，每行一个JSON对象
+
+// 第一行: headers定义
+{
+  "data": {
+    "headers": ["#user_id", "#event_name", "#event_time", ...]
+  },
+  "return_code": 0,
+  "return_message": "success"
+}
+
+// 后续行: 数据行，数组顺序对应headers
+[1242505651616231424, "ta_app_end", "2024-06-19 14:30:03.924", ...]
+[1242505651616231424, "enter_game", "2024-06-19 14:30:03.964", ...]
+[1242505651616231424, "exit_game", "2024-06-19 14:30:03.992", ...]
+```
+
+### 错误返回
+* 缺少 sql：HTTP 400，`{"error": "sql is required"}`
+* 服务器未配置 token：HTTP 500，`{"error": "token not configured"}`
+* 数数服务器错误或超时：HTTP 502，`{"error": "数数服务器错误或超时"}`
+* SQL 本身有误：HTTP 200，第一行的 `return_code` 不为 0，原因见 `return_message`
+
+---
+
+## 脚本要求
+
+有时单独使用sql无法完成复杂的查询，就需要配合node/python/coffee脚本完成需求，在此提出以下要求：
+
+* 如果用户没有指定，默认把结果转换为csv格式。
+* 时间很重要，默认使用`event_time_utc`来排序过滤时间。
+* 脚本中调用上面的 HTTP 接口查询，按行解析返回结果：第一行取 headers，后续每行是数据数组。

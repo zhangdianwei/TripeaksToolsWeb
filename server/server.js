@@ -13,7 +13,7 @@ import scheduleRouter from './schedule/schedule.js'
 import tpSourceRouter from './tpsource/tpsource.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const PORT = 9090
+const PORT = 80
 const DIST_PATH = path.join(__dirname, '..')
 const isProd = fs.existsSync(path.join(DIST_PATH, 'index.html'))
 
@@ -31,7 +31,10 @@ app.use('/api/release', releaseRouter)
 app.use('/api/schedule', scheduleRouter)
 app.use('/api/tpsource', tpSourceRouter)
 
+app.get('/readtp.txt', (req, res) => res.sendFile(path.join(__dirname, 'tpsource/readtp.txt')))
+
 if (isProd) {
+  app.use('/server', (req, res) => res.sendStatus(404))
   app.use(express.static(DIST_PATH))
   app.get('*', (req, res) => res.sendFile(DIST_PATH + '/index.html'))
 }

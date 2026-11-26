@@ -49,14 +49,18 @@ const groupUrl = (name) => (secrets.webhook || {})[name]
 const devGroupUrl = (project) => groupUrl(`${project}研发群`)
 
 // ============ 飞书卡片内容(各通知统一风格) ============
+// 通知里的项目名
+const NAME = { TP1: 'journey', TP4: 'farm' }
+const pname = (project) => NAME[project] || project
 const RED = (s) => `<font color='#A61B29'>**${s}**</font>`
 function releaseCard(project, { versionName, needPackage, stories, releaseVersion, operator }) {
   const top = `是否发包：${needPackage ? RED('是') : '否'}\n发布版本：${releaseVersion ? RED(releaseVersion) : '—'}\n操作人：${operator || '—'}`
   const content = `**发版内容**\n${(stories || []).map((s, i) => `${i + 1}. ${s}`).join('\n') || '—'}`
-  return { title: versionName || `${project} · 今日发版`, template: 'blue', body: [top, content] }
+  const title = versionName ? versionName.replace(/^\(TP\d\)/, `(${pname(project)})`) : `${pname(project)} · 今日发版`
+  return { title, template: 'blue', body: [top, content] }
 }
-function doneCard(project, version) {
-  return { title: `${project} · 发版完毕`, template: 'green', body: `客户端发版完毕\n版本：**${version || '—'}**` }
+function doneCard(project, releaseVersion) {
+  return { title: `${pname(project)} · 发版完毕`, template: 'green', body: `客户端发版完毕\n版本：**${releaseVersion || '—'}**` }
 }
 // jserror_new 的 msg → 数量,做成飞书卡片双列表格(is_short 两列)
 function msgTable(groups) {
@@ -78,7 +82,7 @@ function shushuCard(project, r) {
     body.push(msgTable(r.groups))
     if (r.groups.length > 30) body.push(`仅显示报错数前 30 条,共 ${r.groups.length} 条`)
   }
-  return { title: `${r.version} 报错情况`, template: r.total ? 'red' : 'green', body }
+  return { title: `${pname(project)} · ${r.version} 报错情况`, template: r.total ? 'red' : 'green', body }
 }
 const projRepos = (p) => (PROJECT_REPOS[p] || []).map(r => ({ ...r, path: repoPath(r.name) }))
 const projMerge = (p) => { const m = MERGE[p]; return m ? { ...m, repo: repoPath(m.repo) } : null }
@@ -300,7 +304,7 @@ async function runNotifySub(flow) {
   const version = flow.context?.releaseVersion ? `${flow.project.toLowerCase()}/${flow.context.releaseVersion}` : ''
   const text = `${flow.project} 客户端发版完毕${version ? `\n版本号 ${version}` : ''}`
   try {
-    await sendBotCard(devGroupUrl(flow.project), doneCard(flow.project, version))
+    await sendBotCard(devGroupUrl(flow.project), doneCard(flow.project, flow.context?.releaseVersion))
     return { sub: { name, ok: true, result: text } }
   } catch (e) { return { sub: { name, ok: false, error: shortErr(e), detail: String(e.stderr || e.message || e).slice(0, 2000) } } }
 }

@@ -132,9 +132,10 @@ function weekRange(date) {
   return { monday, sunday }
 }
 
+const PROJECT_ALIAS = { TP1: 'TP1', TP4: 'TP4', JOURNEY: 'TP1', FARM: 'TP4' }
 function projectFromName(name) {
-  const m = /^\((TP\d)\)/.exec(name || '')
-  return m ? m[1] : null
+  const m = /^\((\w+)\)/.exec(name || '')
+  return m ? PROJECT_ALIAS[m[1].toUpperCase()] || null : null
 }
 
 export async function getRelease(dateStr) {
